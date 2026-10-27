@@ -28,16 +28,29 @@ pytest              # canonicalization vectors, records, chain
 ## What we built (this repo, Apache-2.0, all new Oct 26 – Nov 4)
 
 - **EyD runtime** (`eyd/`) — identity, canonicalization, Action Records,
-  local hash chain, CLI. *(verbs/dispatch/`eyd run`/MCP proxy: Day 2)*
+  local hash chain, CLI (`init`/`enroll`/`run`/`verify-local`), HTTP dispatch
+  with intent-before-execution and in-runtime attestation, offline queue.
 - **Proof format v0** (`spec/PROOF_v0.md`) — records, reports, receipts,
   canonicalization + test vectors, attestation.
 - **Clearinghouse reference** (`clearinghouse-ref/`) — single-node pairing,
-  classification, receipts, PoT score. *(Day 3; reference only — see below)*
-- **Verifier / site SDK** (`verifier/`) — attestation, reporting,
-  `require_eyd(min_score=…)`. *(Day 4)*
-- **Demo sites** (`demo-sites/`) — three companies, one codebase, tamper toggle. *(Day 5)*
-- **Agent demo** (`agent-demo/`) — Meta-model agent, three identities, 3×3 matrix. *(Day 6)*
-- **EyD window** (`eyd-ui/`) — live action list and receipt viewer. *(Day 6)*
+  classification, receipts, PoT score, fork detection. *(reference only — see below)*
+- **Verifier / site SDK** (`verifier/python/`) — attestation, sessions,
+  reporting, offline `verify_receipt`, site score gating.
+- **Demo sites** (`demo-sites/`) — three companies, one codebase, tamper toggle.
+- **Agent demo** (`agent-demo/run.py`) — three identities, full 3×3 matrix + tamper run.
+- **EyD window** (`eyd-ui/window.py`) — live action list and receipt viewer (local web view).
+- **Agent on Meta models** — wiring the demo agent's brain to a Meta model is next; the tool-calling harness (`agent-demo/run.py`) is model-agnostic.
+
+## Run the demo locally
+
+```bash
+pip install -e ".[clearinghouse]"
+python clearinghouse-ref/main.py &            # :8787
+SITE_MODE=welcome  SITE_PORT=8001 python demo-sites/main.py &
+SITE_MODE=required SITE_PORT=8002 python demo-sites/main.py &
+SITE_MODE=proven   SITE_PORT=8003 python demo-sites/main.py &
+python agent-demo/run.py                      # the 3x3 matrix + tamper run
+```
 
 ## What we didn't build (third-party / hosted)
 

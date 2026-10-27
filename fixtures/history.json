@@ -1,0 +1,1 @@
+{"demo_data": true, "warning": "Seeded demo history. Not a real history. See fixtures/README.md.", "agents": {"B": {"expected": 4, "unexpected": 4, "declined": 2, "note": "score = 4/10 = 0.4"}, "C": {"expected": 32, "unexpected": 1, "declined": 0, "note": "score = 32/33 ~= 0.97"}}}
