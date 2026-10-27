@@ -58,6 +58,17 @@ def cmd_enroll(args) -> int:
     return 0 if status == 200 else 1
 
 
+def cmd_mcp(args) -> int:
+    from .mcp import parse_upstream, run_mcp
+
+    ident = _load_identity(Path(args.identity) if args.identity else None)
+    chain = LocalChain(Path(args.chain) if args.chain else default_chain_path(), ident)
+    reporter = Reporter(args.clearinghouse) if args.clearinghouse else None
+    if reporter:
+        reporter.enroll(ident)
+    return run_mcp(ident, chain, reporter, parse_upstream(args.upstream))
+
+
 def cmd_run(args) -> int:
     """Launcher mode (§3.1): start the agent with EyD identity in its env.
 
@@ -100,6 +111,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--identity", default=None)
     p.add_argument("--clearinghouse", default="http://127.0.0.1:8787")
     p.set_defaults(fn=cmd_enroll)
+
+    p = sub.add_parser("mcp", help="MCP proxy mode: serve/proxy tools over stdio")
+    p.add_argument("--identity", default=None)
+    p.add_argument("--chain", default=None)
+    p.add_argument("--clearinghouse", default="http://127.0.0.1:8787")
+    p.add_argument("--upstream", default=None,
+                   help="real MCP server command to proxy, e.g. 'python my_mcp_server.py'")
+    p.set_defaults(fn=cmd_mcp)
 
     p = sub.add_parser("run", help="launcher mode: run an agent command under EyD")
     p.add_argument("--identity", default=None)
