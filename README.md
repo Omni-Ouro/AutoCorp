@@ -39,7 +39,7 @@ pytest              # canonicalization vectors, records, chain
 - **Demo sites** (`demo-sites/`) — three companies, one codebase, tamper toggle.
 - **Agent demo** (`agent-demo/run.py`) — three identities, full 3×3 matrix + tamper run.
 - **EyD window** (`eyd-ui/window.py`) — live action list and receipt viewer (local web view).
-- **Your existing agent** — not built here. Wrap it unmodified via `eyd run` (launcher mode) or point its framework at EyD's MCP proxy (`eyd mcp`); the matrix harness in `agent-demo/run.py` drives the same Dispatcher calls for the demo.
+- **Demo agents** (`agent-demo/`) — one Meta-model agent ([agent.py](agent-demo/agent.py)), three identities. Bare vs `eyd run` (HTTP-proxy interception, agent unmodified); `run_agents.py` runs the full matrix on the real model, `run.py` runs it deterministically without the LLM.
 
 ## Run the demo locally
 

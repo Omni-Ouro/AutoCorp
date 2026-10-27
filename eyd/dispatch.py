@@ -18,6 +18,10 @@ from .identity import Identity
 from .records import build_agent_report, utc_now
 from .reporter import Reporter
 
+# EyD always talks to sites/clearinghouse directly, never via a proxy
+# (in particular not via its own `eyd run` interception proxy).
+_DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
 # Default verb map (§3.1): every tool belongs to exactly one verb.
 VERB_MAP = {
     "http.get": "browse",
@@ -83,7 +87,7 @@ class Dispatcher:
             headers["EyD-Session"] = self.sessions[target]
         req = urllib.request.Request(url, data=body, method=method.upper(), headers=headers)
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with _DIRECT.open(req, timeout=10) as resp:
                 self._capture_session(target, resp.headers)
                 return resp.status, resp.read(), dict(resp.headers)
         except urllib.error.HTTPError as e:
@@ -95,7 +99,7 @@ class Dispatcher:
                     self.identity, nonce=challenge, head_seq=seq, head_hash=head)
                 req2 = urllib.request.Request(url, data=body, method=method.upper(), headers=headers)
                 try:
-                    with urllib.request.urlopen(req2, timeout=10) as resp:
+                    with _DIRECT.open(req2, timeout=10) as resp:
                         self._capture_session(target, resp.headers)
                         return resp.status, resp.read(), dict(resp.headers)
                 except urllib.error.HTTPError as e2:

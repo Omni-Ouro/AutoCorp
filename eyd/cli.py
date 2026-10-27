@@ -70,23 +70,42 @@ def cmd_mcp(args) -> int:
 
 
 def cmd_run(args) -> int:
-    """Launcher mode (§3.1): start the agent with EyD identity in its env.
+    """Launcher mode (§3.1): run an agent command through EyD, unmodified.
 
-    The agent is not modified and does not learn EyD exists from its own
-    output; EyD's Dispatcher is what its tools route through when the
-    hosting framework points at EyD (agent-demo shows the pattern).
+    EyD starts its HTTP interception proxy, enrolls the identity, and
+    launches the agent with HTTP_PROXY pointing at EyD. The agent's own
+    HTTP tools route through the Dispatcher (sign -> intent -> execute
+    -> outcome -> receipt) with no code changes and no EyD references
+    in anything the agent sees.
     """
+    import threading
+
+    from .dispatch import Dispatcher
+    from .proxy import make_proxy_server
+
     ident = _load_identity(Path(args.identity) if args.identity else None)
-    if args.clearinghouse:
-        Reporter(args.clearinghouse).enroll(ident)
-    env = {**os.environ, "EYD_AGENT_ID": ident.id,
-           "EYD_CLEARINGHOUSE": args.clearinghouse or "",
-           "EYD_IDENTITY": str(Path(args.identity) if args.identity else default_identity_path())}
     if not args.command:
-        print("usage: eyd run [--clearinghouse URL] -- <agent command>", file=sys.stderr)
+        print("usage: eyd run [--identity F] [--clearinghouse URL] -- <agent command>",
+              file=sys.stderr)
         return 2
-    print(f"eyd: agent {ident.id} -> {' '.join(args.command)}", file=sys.stderr)
-    return subprocess.call(args.command, env=env)
+    reporter = Reporter(args.clearinghouse) if args.clearinghouse else None
+    if reporter:
+        reporter.enroll(ident)
+    chain_path = Path(args.chain) if getattr(args, "chain", None) else (
+        Path(args.identity).parent / "chain.jsonl" if args.identity else default_chain_path())
+    chain = LocalChain(chain_path, ident)
+    server = make_proxy_server(Dispatcher(chain, ident, reporter))
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    proxy = f"http://127.0.0.1:{port}"
+    env = {**os.environ, "HTTP_PROXY": proxy, "http_proxy": proxy,
+           "HTTPS_PROXY": proxy, "https_proxy": proxy, "NO_PROXY": "", "no_proxy": ""}
+    print(f"eyd: agent {ident.id} via proxy :{port} -> {' '.join(args.command)}",
+          file=sys.stderr)
+    try:
+        return subprocess.call(args.command, env=env)
+    finally:
+        server.shutdown()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -122,6 +141,7 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("run", help="launcher mode: run an agent command under EyD")
     p.add_argument("--identity", default=None)
+    p.add_argument("--chain", default=None)
     p.add_argument("--clearinghouse", default="http://127.0.0.1:8787")
     p.add_argument("command", nargs=argparse.REMAINDER,
                    help="agent command (after --)")
