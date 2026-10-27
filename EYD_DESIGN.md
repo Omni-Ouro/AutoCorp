@@ -28,7 +28,7 @@
 
 ## 1. One-paragraph claim
 
-EyD is a thin runtime and a small window. Whatever agent you already use is run through it. The model picks verbs; EyD executes the tool, signs a record of the action under the agent's own Ed25519 key, and reports it to the clearinghouse before the call goes out. The counterparty site reports its side after. The clearinghouse pairs the two, classifies the result (Expected, Unexpected, Declined, Unverified), and issues a signed Proof Receipt to both parties. Agents that don't route through EyD get no receipt. Sites that gate on EyD only admit agents that do.
+EyD is a small library and a small window. The agent framework imports it, and it sits in the tool-call path: every call the agent makes is signed under the agent's own Ed25519 key and reported to the clearinghouse before it goes out. The counterparty site reports its side after. The clearinghouse pairs the two, classifies the result (Expected, Unexpected, Declined, Unverified), and issues a signed Proof Receipt to both parties. Agents that don't route through EyD get no receipt. Sites that gate on EyD only admit agents that do.
 
 **Demo in one sentence:** an agent on Meta models tries a gated site bare and is refused; through EyD it's admitted, acts, and both sides get a receipt that says Expected; the site tampers with its response and the receipt says Unexpected; the agent hits a non-EyD site and the window shows Unverified.
 
@@ -36,7 +36,7 @@ EyD is a thin runtime and a small window. Whatever agent you already use is run 
 
 | Component | This repo (Apache-2.0) | Omni-Ouro |
 |---|---|---|
-| EyD runtime (verbs, dispatch, signing, local chain, reporting) | yes | |
+| EyD SDK (tool hook, verbs, signing, local chain, reporting) | yes | |
 | EyD window (receipt viewer) | yes | |
 | Proof format v0 (records, reports, receipts) | yes | |
 | Verifier / site SDK (attest, report) | yes | |
@@ -50,22 +50,27 @@ The hook stays intact: the open pieces prove hashes and classify agreement; only
 
 ## 3. Components
 
-### 3.1 EyD runtime (`eyd/`)
-Local process. Two ways in:
-- **Launcher mode:** `eyd run <agent command>` — starts the agent with EyD as its tool endpoint and opens the window.
-- **Proxy mode:** EyD exposes an MCP server; the agent's framework points at it. EyD forwards to the real MCP servers and HTTP tools behind it.
+### 3.1 EyD SDK (`eyd/`)
+EyD is a library the agent framework imports. It is not a process, not a proxy, not a tool server. It sits in the framework's tool-call path as a hook: before the call runs, EyD records and reports; after it returns, EyD hashes the result and reports. The framework author adds it once; every agent built on that framework is covered. It has no authority and no policy. Governance is Eyro.
+
+**Integration, one of:**
+- `@eyd.tool` decorator on each tool function.
+- `eyd.wrap(tool_fn)` for frameworks that build tool tables at runtime.
+- `eyd.hook(framework)` for frameworks that expose tool-call middleware.
+
+`eyd run <agent command>` only opens the window and attaches it to the agent's local chain; the recording already happens inside the framework.
 
 Per call:
-1. Resolve `verb.tool`.
+1. Framework invokes a wrapped tool. EyD resolves `verb` from the tool's registered verb (set in the decorator or inferred from the tool name).
 2. Build Action Record, sign, compute `record_hash`, append to local chain.
-3. **Report intent** to clearinghouse (`POST /intents`). Window shows the action as *pending*.
-4. Execute the tool with headers `EyD-Agent: <agent_id>`, `EyD-Record: <record_hash>` and, inside an attested session, `EyD-Session: <token>`. One Action Record per tool invocation; if the invocation makes several HTTP requests (redirects, pagination, retries), every one carries the same headers and the site reports on whichever hits its gated endpoint.
-5. Hash the response, **report outcome** (`POST /reports/agent`). Window shows *awaiting counterparty*.
-6. Receive Proof Receipt (push over a persistent connection, or poll). Window shows the classification.
+3. **Report intent** to clearinghouse (`POST /intents`). Window shows *pending*.
+4. Run the tool. EyD passes `EyD-Agent`, `EyD-Record` and, in an attested session, `EyD-Session` into the call so the tool attaches them to its outbound request. One Action Record per tool invocation; if the invocation makes several requests, every one carries the same headers and the site reports on the one that hits its gated endpoint.
+5. Hash the return value, **report outcome** (`POST /reports/agent`). Window shows *awaiting counterparty*.
+6. Receive Proof Receipt. Window shows the classification.
 
-If the clearinghouse is unreachable, the action still runs and is still chained locally; the report is queued and retried. Local chain is the source of truth; the clearinghouse is the referee.
+If the clearinghouse is unreachable, the tool still runs and the action still chains locally; reports queue and retry. Local chain is truth; clearinghouse is referee.
 
-**Transparency.** The agent never learns EyD exists. Verbs are presented as the agent's own tools, tool results come back unmodified, attestation headers and challenge handling happen entirely inside EyD, and no tool result, error, or system text ever names EyD. The only thing an agent ever sees that relates to EyD is a site's refusal, and that refusal names a **PoT score**, not EyD (Section 3.10).
+**Transparency.** The agent never learns EyD exists. The hook is invisible from the model's side: tool lists, arguments and results are untouched, and no error or system text names EyD. The only EyD-shaped thing an agent can ever see is a site's refusal, which names a **PoT score** (Section 3.10).
 
 **Verb map v0** (default, configurable): `read`, `write`, `send`, `browse`, `execute`, `pay`. Every tool belongs to exactly one verb.
 
@@ -138,7 +143,7 @@ Three fake companies, one codebase, three configs. Each exposes the same action 
 - Dashboard per site: agents seen, actions, classification, receipt detail. Sites 2 and 3 have a **tamper** toggle that alters the response after hashing so the next receipt reads Unexpected.
 
 ### 3.8 Demo agents (`agent-demo/`)
-One Meta-model agent, three identities. The agent's code contains no reference to EyD; the only difference between runs is whether it's launched bare or via `eyd run`, and which key EyD loads.
+One Meta-model agent, three identities. A plain Python tool loop stands in for a framework. Agent A's tools are undecorated; B's and C's carry `@eyd.tool` with different keys. The model code is identical across all three.
 
 | Agent | Setup | Seeded history |
 |---|---|---|
@@ -212,7 +217,7 @@ Key rotation, revocation, multi-clearinghouse, privacy of agent_id across sites,
 
 ## 5. Repo layout
 ```
-eyd/                 runtime (identity, chain, verbs, dispatch, mcp proxy, reporter, cli)
+eyd/                 SDK (identity, chain, verbs, tool hook, reporter, cli)
 eyd-ui/              window
 verifier/            python/ ts/
 clearinghouse-ref/   single-node pairing, classification, receipts
@@ -231,7 +236,7 @@ LICENSE              Apache-2.0
 | Day | Date | Deliverable |
 |---|---|---|
 | 1 | Mon Oct 26 | **Public repo created; this doc is the first commit.** Spec frozen. Identity, canonicalization + vectors, Action Record, local chain, `verify-local`. |
-| 2 | Tue Oct 27 | Runtime: verbs, HTTP dispatch, MCP passthrough, `eyd run`, intent + agent report (to a stub). Check which Meta models and agent products are on the API; pick the demo model. |
+| 2 | Tue Oct 27 | SDK: decorator, `wrap`, `hook`, verb registration, `eyd run` window attach, intent + agent report (to a stub). Check which Meta models and agent products are on the API; pick the demo model. |
 | 3 | Wed Oct 28 | Clearinghouse-ref: enroll, intents, both reports, pairing, classification, receipts, push, score. **Kill point:** one action goes agent → EyD → intent → tool → agent report → (fake site report) → receipt in the terminal, or stop and return to Eyro. |
 | 4 | Thu Oct 29 | Verifier: attestation, `report`, `verify_receipt`, `require_eyd(min_score)`. Challenge/response in runtime. |
 | 5 | Fri Oct 30 | Demo sites: one app, three configs, dashboards, tamper toggle. Seed fixture + `seed` command. **Deploy clearinghouse-ref and the three companies to a droplet with real URLs.** |
