@@ -72,10 +72,13 @@ def run_agent(label: str, url: str, task: str, ident: Identity | None) -> str:
     if label == "A":
         cmd = [sys.executable, agent, "--url", url, task]
     else:
+        # Framework config: tools carry @eyd.tool under this key.
+        # `eyd run` only opens the window attached to the same chain.
         cmd = ["eyd", "run", "--identity", str(KEYS / f"{label}.json"),
                "--chain", str(KEYS / label / "chain.jsonl"),
                "--clearinghouse", CH, "--",
-               sys.executable, agent, "--url", url, task]
+               sys.executable, agent, "--eyd-identity", str(KEYS / f"{label}.json"),
+               "--url", url, task]
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=240, env=env,
                           encoding="utf-8", errors="replace")

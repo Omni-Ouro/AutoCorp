@@ -1,29 +1,36 @@
-"""Demo agent (§3.8) — one agent, three identities.
+"""Demo agent (§3.8) — one Meta-model agent, three identities.
 
-A plain tool-using agent on Meta models: given a task, the model picks
-the `submit_quote_request` tool, the tool posts to a vendor site, the
-model reports back. This file contains no reference to EyD, receipts,
-or identity — there is nothing EyD-shaped to reference.
+A plain Python tool loop stands in for a framework. The model code
+below is identical across all three agents; the only difference is
+the framework's tool table:
 
-The only difference between demo runs is how this file is launched:
-  A:  python agent-demo/agent.py --url http://localhost:8002/quote
-  B:  eyd run --identity agent-demo/.keys/B.json -- python agent-demo/agent.py --url ...
-  C:  eyd run --identity agent-demo/.keys/C.json -- python agent-demo/agent.py --url ...
+  A:  tools undecorated                        (no key, no enrollment)
+  B:  tools carry @eyd.tool with key B         (seeded score ~0.4)
+  C:  tools carry @eyd.tool with key C         (seeded score ~0.97)
 
-Model: Meta model API (Anthropic Messages format) via
-$ANTHROPIC_BASE_URL / $ANTHROPIC_AUTH_TOKEN / $ANTHROPIC_MODEL.
-The model client connects directly (it is not a tool); the quote tool
-uses the process's default HTTP routing, like any agent tool would.
+The model never sees a difference: same tool name, same arguments,
+same results. EyD sits in the framework's tool-call path and passes
+its headers into the call; the tool's transport attaches them.
+
+Usage (framework selects identity; `eyd run` only opens the window):
+  python agent-demo/agent.py --url http://localhost:8002/quote
+  eyd run --identity .keys/B.json --chain .keys/B/chain.jsonl -- \
+      python agent-demo/agent.py --eyd-identity .keys/B.json --url ...
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import sys
 import urllib.error
 import urllib.request
+from dataclasses import dataclass, field
+from pathlib import Path
 
-TOOL = {
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+TOOL_SCHEMA = {
     "name": "submit_quote_request",
     "description": "Submit a quote request to a vendor site",
     "input_schema": {"type": "object",
@@ -32,10 +39,17 @@ TOOL = {
 DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
+@dataclass
+class HttpResult:
+    status: int
+    body: str
+    headers: dict = field(default_factory=dict)
+
+
 def call_model(messages: list[dict]) -> dict:
     base = os.environ["ANTHROPIC_BASE_URL"].rstrip("/")
     payload = {"model": os.environ.get("ANTHROPIC_MODEL", "muse-wonder-1.0"),
-               "max_tokens": 1024, "tools": [TOOL], "messages": messages}
+               "max_tokens": 1024, "tools": [TOOL_SCHEMA], "messages": messages}
     req = urllib.request.Request(
         base + "/v1/messages", data=json.dumps(payload).encode(), method="POST",
         headers={"Content-Type": "application/json",
@@ -46,25 +60,53 @@ def call_model(messages: list[dict]) -> dict:
         return json.loads(r.read())
 
 
-def submit_quote_request(need: str, url: str) -> str:
-    """The agent's one tool: submit a quote request to the vendor."""
-    req = urllib.request.Request(
-        url, data=json.dumps({"need": need}).encode(), method="POST",
-        headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return r.read().decode()
-    except urllib.error.HTTPError as e:
-        return e.read().decode()
+def make_submit_quote_request(vendor_url: str):
+    """The agent's one tool. Its transport attaches whatever headers
+    the framework passes into the call (none for agent A)."""
+
+    def submit_quote_request(need: str) -> HttpResult:
+        from eyd import current_headers
+
+        headers = {"Content-Type": "application/json", **current_headers()}
+        req = urllib.request.Request(
+            vendor_url, data=json.dumps({"need": need}).encode(),
+            method="POST", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return HttpResult(r.status, r.read().decode(), dict(r.headers))
+        except urllib.error.HTTPError as e:
+            return HttpResult(e.code, e.read().decode(), dict(e.headers))
+
+    return submit_quote_request
+
+
+def build_tool_table(vendor_url: str, eyd_identity: str | None,
+                     clearinghouse: str):
+    """Framework tool table — the only place A and B/C differ."""
+    tool_fn = make_submit_quote_request(vendor_url)
+    if eyd_identity is None:
+        return {"submit_quote_request": tool_fn}  # A: undecorated
+    from urllib.parse import urlparse
+
+    from eyd import EyD
+
+    identity_path = Path(eyd_identity)
+    eyd = EyD.load(identity_path, clearinghouse=clearinghouse,
+                   chain_path=identity_path.with_suffix("") / "chain.jsonl")
+    target = urlparse(vendor_url).hostname or "local"
+    return {"submit_quote_request": eyd.tool(verb="send", target=target)(tool_fn)}
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="http://localhost:8002/quote",
-                    help="vendor quote endpoint")
+    ap.add_argument("--url", default="http://localhost:8002/quote")
+    ap.add_argument("--eyd-identity", default=None,
+                    help="framework config: decorate tools with @eyd.tool under this key")
+    ap.add_argument("--clearinghouse", default="http://127.0.0.1:8787")
     ap.add_argument("task", nargs="?", default="Get me a quote for a landing page design")
     args = ap.parse_args()
 
+    tools = build_tool_table(args.url, args.eyd_identity, args.clearinghouse)
     messages = [{"role": "user", "content": args.task}]
     for _ in range(4):
         resp = call_model(messages)
@@ -74,10 +116,11 @@ def main() -> int:
             if block.get("type") == "text":
                 print(block["text"], flush=True)
             elif block.get("type") == "tool_use":
-                result = submit_quote_request(block["input"]["need"], args.url)
-                print(f"[tool submit_quote_request] -> {result}", flush=True)
+                result = tools[block["name"]](**block["input"])
+                body = result.body if isinstance(result, HttpResult) else str(result)
+                print(f"[tool submit_quote_request] -> {body}", flush=True)
                 tool_results.append({"type": "tool_result",
-                                     "tool_use_id": block["id"], "content": result})
+                                     "tool_use_id": block["id"], "content": body})
         if not tool_results:
             return 0
         messages.append({"role": "user", "content": tool_results})

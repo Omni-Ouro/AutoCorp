@@ -10,14 +10,14 @@
         intent     │  receipt │  site    │ │ pubkey/score lookup
         (before)   │          │  report  │ │ (cached at the site)
                 ┌──┴──────────▼──┐   ┌───┴────────────┐
-                │  EyD runtime   │   │      Site       │
+                │  EyD SDK hook  │   │      Site       │
                 │ sign · chain · ├─► │ require_eyd()   │
-                │ dispatch       │◄─┤ report outcome  │
+                │ report         │◄─┤ report outcome  │
                 └─▲──────────────┘   └─────────────────┘
-                  │ verbs presented as its own tools
+                  │ tool-call path inside the framework
                 ┌─┴──────────────┐
-                │  Any agent     │  never learns EyD exists;
-                │  (Meta models) │  only ever sees a PoT refusal
+                │ Framework +    │  @eyd.tool / wrap / hook;
+                │ agent (Meta)   │  model code untouched
                 └────────────────┘
 ```
 

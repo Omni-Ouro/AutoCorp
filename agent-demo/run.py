@@ -1,28 +1,27 @@
-"""Agent demo — 3x3 matrix (§3.8–3.9).
+"""Deterministic 3x3 matrix (§3.9) without LLM calls.
 
-One Meta-model agent happens at Day 6; this runner is the tool-calling
-harness it will drive: the same "submit a quote request" action, run bare
-(A) and via EyD with two keys (B: seeded score ~0.4, C: seeded ~0.97).
-The agent code contains no reference to EyD — the only difference is
-whether EyD's Dispatcher makes the call.
+Same tool the LLM agent uses, driven directly through the framework
+tool table: A's tool undecorated, B/C decorated with @eyd.tool under
+their keys. For the live LLM version see run_agents.py.
 
-Prereqs: clearinghouse on :8787 and the three demo sites on :8001-8003.
-Usage:  python agent-demo/run.py [--seed-only]
+Prereqs: clearinghouse :8787, demo sites :8001-8003.
+Usage: python agent-demo/run.py
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "verifier" / "python"))
 
-from eyd.chain import LocalChain  # noqa: E402
-from eyd.dispatch import Dispatcher  # noqa: E402
+from agent import HttpResult, make_submit_quote_request  # noqa: E402  (agent-demo/agent.py)
+from eyd import EyD  # noqa: E402
+from eyd.canonical import record_hash  # noqa: E402
 from eyd.identity import Identity  # noqa: E402
 from eyd.records import utc_now  # noqa: E402
 from eyd.reporter import Reporter, request_json  # noqa: E402
@@ -31,7 +30,7 @@ CH = "http://127.0.0.1:8787"
 SITES = [("All Agents Welcome Inc", 8001), ("EyD Required LLC", 8002), ("Only Proven Agents PLC", 8003)]
 KEYS = Path(__file__).parent / ".keys"
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "history.json"
-BODY = json.dumps({"need": "landing page design"}).encode()
+NEED = "landing page design"
 
 
 def load_or_create(label: str) -> Identity:
@@ -44,81 +43,77 @@ def load_or_create(label: str) -> Identity:
     return ident
 
 
-def seed_history(reporter: Reporter, label: str, ident: Identity) -> None:
+def seed_history(label: str, ident: Identity) -> None:
     counts = json.loads(FIXTURE.read_text())["agents"][label]
-    receipts = []
-    i = 0
+    receipts, i = [], 0
     for classification, n in (("Expected", counts["expected"]),
                               ("Unexpected", counts["unexpected"]),
                               ("Declined", counts["declined"])):
         for _ in range(n):
-            rh = "sha256:" + hashlib.sha256(f"seed-{label}-{i}".encode()).hexdigest()
-            receipts.append({"record_hash": rh, "agent_id": ident.id,
-                             "site_id": "SEEDED-DEMO-SITE", "classification": classification,
-                             "target": "seeded.demo", "ts": utc_now(), "ch_sig": "ed25519:demo"})
+            receipts.append({
+                "record_hash": "sha256:" + hashlib.sha256(f"seed-{label}-{i}".encode()).hexdigest(),
+                "agent_id": ident.id, "site_id": "SEEDED-DEMO-SITE",
+                "classification": classification, "target": "seeded.demo",
+                "ts": utc_now(), "ch_sig": "ed25519:demo"})
             i += 1
-    status, body, _ = request_json("POST", f"{CH}/seed", {"receipts": receipts})
+    _, body, _ = request_json("POST", f"{CH}/seed", {"receipts": receipts})
     print(f"seeded {label}: {body} (DEMO DATA)")
 
 
-def bare(url: str) -> tuple[int, str]:
-    req = urllib.request.Request(url, data=BODY, method="POST",
-                                 headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=5) as r:
-            return r.status, r.read().decode()
-    except urllib.error.HTTPError as e:
-        return e.code, e.read().decode()
+def bare_tool(url: str):
+    return {"submit_quote_request": make_submit_quote_request(url)}
+
+
+def eyd_tool(url: str, label: str, ident: Identity):
+    chain_path = KEYS / label / "chain.jsonl"
+    eyd = EyD.load(KEYS / f"{label}.json", clearinghouse=CH, chain_path=chain_path)
+    from urllib.parse import urlparse
+    fn = make_submit_quote_request(url)
+    return {"submit_quote_request": eyd.tool(verb="send", target=urlparse(url).hostname)(fn)}, eyd
+
+
+def latest_receipt(label: str, reporter: Reporter) -> str:
+    chain_file = KEYS / label / "chain.jsonl"
+    lines = [x for x in chain_file.read_text().splitlines() if x.strip()]
+    rh = record_hash(json.loads(lines[-1]))
+    receipt = reporter.get_receipt(rh)
+    if receipt is None:
+        request_json("POST", f"{CH}/sweep?now={time.time() + 601}", {})
+        receipt = reporter.get_receipt(rh)
+    return (receipt or {}).get("classification", "-")
 
 
 def main() -> int:
     reporter = Reporter(CH)
-    agents: dict[str, Dispatcher] = {}
+    idents, seeded = {}, {}
     for label in ("B", "C"):
         ident = load_or_create(label)
         reporter.enroll(ident)
-        home = KEYS / label
-        home.mkdir(exist_ok=True)
-        chain = LocalChain(home / "chain.jsonl", ident)
-        agents[label] = Dispatcher(chain, ident, reporter)
-        if "--seed-only" in sys.argv or not (home / ".seeded").exists():
-            seed_history(reporter, label, ident)
-            (home / ".seeded").write_text("demo data seeded\n")
-        score = request_json("GET", f"{CH}/agents/{ident.id}/score")[1]
-        print(f"agent {label} {ident.id} score={score.get('score')}")
-
-    if "--seed-only" in sys.argv:
-        return 0
+        idents[label] = ident
+        marker = KEYS / label / ".seeded"
+        if not marker.exists():
+            seed_history(label, ident)
+            marker.write_text("demo data seeded\n")
+        seeded[label] = request_json("GET", f"{CH}/agents/{ident.id}/score")[1].get("score")
+        print(f"agent {label} {ident.id} score={seeded[label]}")
 
     rows = []
-    pending: dict[int, str] = {}  # row index -> record_hash awaiting a receipt
-    # A: bare, no EyD at all.
-    for company, port in SITES:
-        status, body = bare(f"http://localhost:{port}/quote")
-        rows.append(["A (bare)", company, status, body.strip()[:60], "-"])
-    # B and C via EyD.
+    for company, port in SITES:  # A bare
+        result = bare_tool(f"http://localhost:{port}/quote")["submit_quote_request"](need=NEED)
+        rows.append(["A (bare)", company, result.status, result.body[:60], "-"])
     for label in ("B", "C"):
         for company, port in SITES:
-            out = agents[label].execute_http("POST", f"http://localhost:{port}/quote", body=BODY)
-            receipt = (out["receipt"] or {}).get("classification", "-")
-            rows.append([label, company, out["status"], out["body"].decode()[:60], receipt])
-            if receipt == "-":
-                pending[len(rows) - 1] = out["record_hash"]
-    # Tamper run: C against Required with the toggle on.
+            tools, _eyd = eyd_tool(f"http://localhost:{port}/quote", label, idents[label])
+            result = tools["submit_quote_request"](need=NEED)
+            rows.append([label, company, result.status, result.body[:60],
+                         latest_receipt(label, reporter)])
+    # Tamper run
     request_json("POST", "http://localhost:8002/tamper", {"on": True})
-    out = agents["C"].execute_http("POST", "http://localhost:8002/quote", body=BODY)
+    tools, _ = eyd_tool("http://localhost:8002/quote", "C", idents["C"])
+    result = tools["submit_quote_request"](need=NEED)
     request_json("POST", "http://localhost:8002/tamper", {"on": False})
-    rows.append(["C (tamper)", "EyD Required LLC", out["status"], out["body"].decode()[:60],
-                 (out["receipt"] or {}).get("classification", "-")])
-
-    # Close the pairing window so one-sided actions (Welcome never
-    # reports) settle as Unverified, as they would after 10 min live.
-    import time as _time
-    request_json("POST", f"{CH}/sweep?now={_time.time() + 601}", {})
-    for idx, rh in pending.items():
-        receipt = reporter.get_receipt(rh)
-        if receipt:
-            rows[idx][4] = receipt["classification"]
+    rows.append(["C (tamper)", "EyD Required LLC", result.status, result.body[:60],
+                 latest_receipt("C", reporter)])
 
     print(f"\n{'agent':<12} {'site':<26} {'http':<5} {'classification':<15} body")
     for agent, company, status, body, cls in rows:

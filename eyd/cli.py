@@ -58,52 +58,32 @@ def cmd_enroll(args) -> int:
     return 0 if status == 200 else 1
 
 
-def cmd_mcp(args) -> int:
-    from .mcp import parse_upstream, run_mcp
-
-    ident = _load_identity(Path(args.identity) if args.identity else None)
-    chain = LocalChain(Path(args.chain) if args.chain else default_chain_path(), ident)
-    reporter = Reporter(args.clearinghouse) if args.clearinghouse else None
-    if reporter:
-        reporter.enroll(ident)
-    return run_mcp(ident, chain, reporter, parse_upstream(args.upstream))
-
-
 def cmd_run(args) -> int:
-    """Launcher mode (§3.1): run an agent command through EyD, unmodified.
-
-    EyD starts its HTTP interception proxy, enrolls the identity, and
-    launches the agent with HTTP_PROXY pointing at EyD. The agent's own
-    HTTP tools route through the Dispatcher (sign -> intent -> execute
-    -> outcome -> receipt) with no code changes and no EyD references
-    in anything the agent sees.
-    """
+    """`eyd run <agent command>` (§3.1): opens the window and attaches
+    it to the agent's local chain. Recording already happens inside the
+    framework via the SDK — this command intercepts nothing. With no
+    command, it just serves the window."""
     import threading
 
-    from .dispatch import Dispatcher
-    from .proxy import make_proxy_server
+    from .window import make_window_server
 
-    ident = _load_identity(Path(args.identity) if args.identity else None)
-    if not args.command:
-        print("usage: eyd run [--identity F] [--clearinghouse URL] -- <agent command>",
-              file=sys.stderr)
-        return 2
-    reporter = Reporter(args.clearinghouse) if args.clearinghouse else None
-    if reporter:
-        reporter.enroll(ident)
-    chain_path = Path(args.chain) if getattr(args, "chain", None) else (
-        Path(args.identity).parent / "chain.jsonl" if args.identity else default_chain_path())
-    chain = LocalChain(chain_path, ident)
-    server = make_proxy_server(Dispatcher(chain, ident, reporter))
-    port = server.server_address[1]
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    proxy = f"http://127.0.0.1:{port}"
-    env = {**os.environ, "HTTP_PROXY": proxy, "http_proxy": proxy,
-           "HTTPS_PROXY": proxy, "https_proxy": proxy, "NO_PROXY": "", "no_proxy": ""}
-    print(f"eyd: agent {ident.id} via proxy :{port} -> {' '.join(args.command)}",
-          file=sys.stderr)
+    identity_path = Path(args.identity) if args.identity else default_identity_path()
+    ident = _load_identity(identity_path)
+    chain_path = Path(args.chain) if args.chain else (
+        identity_path.parent / "chain.jsonl" if args.identity else default_chain_path())
+    reporter = Reporter(args.clearinghouse) if args.clearinghouse else Reporter("http://127.0.0.1:8787")
+    server = make_window_server(identity_path, chain_path, reporter, port=args.window_port)
+    print(f"eyd: window http://127.0.0.1:{args.window_port} attached to {chain_path} "
+          f"(agent {ident.id})", file=sys.stderr)
     try:
-        return subprocess.call(args.command, env=env)
+        if args.command:
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            return subprocess.call(args.command, env={**os.environ})
+        print("eyd: serving window, Ctrl+C to stop", file=sys.stderr)
+        server.serve_forever()
+        return 0
+    except KeyboardInterrupt:
+        return 0
     finally:
         server.shutdown()
 
@@ -131,18 +111,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--clearinghouse", default="http://127.0.0.1:8787")
     p.set_defaults(fn=cmd_enroll)
 
-    p = sub.add_parser("mcp", help="MCP proxy mode: serve/proxy tools over stdio")
+    p = sub.add_parser("run", help="open the EyD window attached to the local chain")
     p.add_argument("--identity", default=None)
     p.add_argument("--chain", default=None)
     p.add_argument("--clearinghouse", default="http://127.0.0.1:8787")
-    p.add_argument("--upstream", default=None,
-                   help="real MCP server command to proxy, e.g. 'python my_mcp_server.py'")
-    p.set_defaults(fn=cmd_mcp)
-
-    p = sub.add_parser("run", help="launcher mode: run an agent command under EyD")
-    p.add_argument("--identity", default=None)
-    p.add_argument("--chain", default=None)
-    p.add_argument("--clearinghouse", default="http://127.0.0.1:8787")
+    p.add_argument("--window-port", type=int, default=8790)
     p.add_argument("command", nargs=argparse.REMAINDER,
                    help="agent command (after --)")
     p.set_defaults(fn=cmd_run)

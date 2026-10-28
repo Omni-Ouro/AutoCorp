@@ -2,10 +2,10 @@
 
 **Agents act on your behalf. Nobody can prove what they did.**
 
-EyD is a thin runtime and a small window. Whatever agent you already use is
-run through it. The model picks verbs; EyD executes the tool, signs a record
-of the action under the agent's own Ed25519 key, and reports it to a
-clearinghouse before the call goes out. The counterparty site reports its
+EyD is a small library and a small window. The agent framework imports
+it, and it sits in the tool-call path: every call the agent makes is
+signed under the agent's own Ed25519 key and reported to a
+clearinghouse before it goes out. The counterparty site reports its
 side after. The clearinghouse pairs the two, classifies the result
 (Expected, Unexpected, Declined, Unverified), and issues a signed Proof
 Receipt to both parties. Agents that don't route through EyD get no receipt.
@@ -27,9 +27,11 @@ pytest              # canonicalization vectors, records, chain
 
 ## What we built (this repo, Apache-2.0, all new Oct 26 – Nov 4)
 
-- **EyD runtime** (`eyd/`) — identity, canonicalization, Action Records,
-  local hash chain, CLI (`init`/`enroll`/`run`/`verify-local`), HTTP dispatch
-  with intent-before-execution and in-runtime attestation, offline queue.
+- **EyD SDK** (`eyd/`) — a library the framework imports: `@eyd.tool`
+  decorator, `eyd.wrap()`, `eyd.hook(framework)`, verb registration,
+  identity, canonicalization, Action Records, local hash chain,
+  reporting with offline queue, CLI (`init`/`enroll`/`run`/`verify-local`).
+  `eyd run` only opens the window attached to the local chain.
 - **Proof format v0** (`spec/PROOF_v0.md`) — records, reports, receipts,
   canonicalization + test vectors, attestation.
 - **Clearinghouse reference** (`clearinghouse-ref/`) — single-node pairing,
@@ -39,7 +41,7 @@ pytest              # canonicalization vectors, records, chain
 - **Demo sites** (`demo-sites/`) — three companies, one codebase, tamper toggle.
 - **Agent demo** (`agent-demo/run.py`) — three identities, full 3×3 matrix + tamper run.
 - **EyD window** (`eyd-ui/window.py`) — live action list and receipt viewer (local web view).
-- **Demo agents** (`agent-demo/`) — one Meta-model agent ([agent.py](agent-demo/agent.py)), three identities. Bare vs `eyd run` (HTTP-proxy interception, agent unmodified); `run_agents.py` runs the full matrix on the real model, `run.py` runs it deterministically without the LLM.
+- **Demo agents** (`agent-demo/`) — one Meta-model agent ([agent.py](agent-demo/agent.py)), three identities: A's tools undecorated, B's/C's carry `@eyd.tool` under different keys, model code identical. `run_agents.py` runs the full matrix on the real model, `run.py` runs it deterministically without the LLM.
 
 ## Run the demo locally
 
@@ -54,7 +56,8 @@ python agent-demo/run.py                      # the 3x3 matrix + tamper run
 
 ## What we didn't build (third-party / hosted)
 
-- The Meta models and any Meta agent wrapped by EyD (used, not built here).
+- The Meta models and any agent framework built on them (the SDK hooks
+  into its tool-call path; used, not built here).
 - `cryptography` (Ed25519/SHA-256 primitives), FastAPI/uvicorn, pytest.
 - The hosted **PoT Clearinghouse** (multi-tenant, webhooks, market data) and
   **Eyro** governance/audit — operated by Omni-Ouro, not in this repo.

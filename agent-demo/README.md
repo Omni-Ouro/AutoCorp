@@ -1,10 +1,11 @@
 # Agent demo
 
-One Meta-model agent ([agent.py](agent.py)), three identities. The agent
-file contains no reference to EyD; the only difference between runs is
-whether it's launched bare or via `eyd run`, and which key EyD loads.
-`eyd run` interposes EyD via the standard `HTTP_PROXY` env var, so the
-agent's own HTTP tool routes through EyD with zero modification.
+One Meta-model agent ([agent.py](agent.py)), three identities. A plain
+Python tool loop stands in for a framework: Agent A's tools are
+undecorated; B's and C's carry `@eyd.tool` with different keys. The model
+code is identical across all three. `eyd run` only opens the window and
+attaches it to the agent's local chain; recording happens inside the
+framework via the SDK.
 
 | Agent | Setup | Seeded history |
 |---|---|---|
