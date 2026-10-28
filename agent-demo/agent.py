@@ -12,10 +12,9 @@ The model never sees a difference: same tool name, same arguments,
 same results. EyD sits in the framework's tool-call path and passes
 its headers into the call; the tool's transport attaches them.
 
-Usage (framework selects identity; `eyd run` only opens the window):
-  python agent-demo/agent.py --url http://localhost:8002/quote
-  eyd run --identity .keys/B.json --chain .keys/B/chain.jsonl -- \
-      python agent-demo/agent.py --eyd-identity .keys/B.json --url ...
+The judge console (console/) drives this agent; standalone usage:
+  python agent-demo/agent.py --url http://localhost:8001/quote
+  python agent-demo/agent.py --eyd-identity .keys/B.json --url ...
 """
 from __future__ import annotations
 
@@ -46,10 +45,10 @@ class HttpResult:
     headers: dict = field(default_factory=dict)
 
 
-def call_model(messages: list[dict]) -> dict:
+def call_model(messages: list[dict], tool: dict | None = None) -> dict:
     base = os.environ["ANTHROPIC_BASE_URL"].rstrip("/")
     payload = {"model": os.environ.get("ANTHROPIC_MODEL", "muse-wonder-1.0"),
-               "max_tokens": 1024, "tools": [TOOL_SCHEMA], "messages": messages}
+               "max_tokens": 1024, "tools": [tool or TOOL_SCHEMA], "messages": messages}
     req = urllib.request.Request(
         base + "/v1/messages", data=json.dumps(payload).encode(), method="POST",
         headers={"Content-Type": "application/json",
@@ -99,7 +98,7 @@ def build_tool_table(vendor_url: str, eyd_identity: str | None,
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="http://localhost:8002/quote")
+    ap.add_argument("--url", default="http://localhost:8001/quote")
     ap.add_argument("--eyd-identity", default=None,
                     help="framework config: decorate tools with @eyd.tool under this key")
     ap.add_argument("--clearinghouse", default="http://127.0.0.1:8787")

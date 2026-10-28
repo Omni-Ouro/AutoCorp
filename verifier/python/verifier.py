@@ -90,6 +90,9 @@ def build_site_report(identity: Identity, *, record_hash_: str, agent_id: str,
     return report
 
 
+_USE_DEFAULT = object()
+
+
 class EyDSite:
     """Stateful site helper behind `require_eyd` in the demo sites."""
 
@@ -171,11 +174,13 @@ class EyDSite:
             del self.sessions[t]
         return len(doomed)
 
-    def score_allows(self, agent_id: str) -> bool:
-        if self.min_score is None:
+    def score_allows(self, agent_id: str, min_score=_USE_DEFAULT) -> bool:
+        """min_score per call overrides the site default (dynamic gates)."""
+        threshold = self.min_score if min_score is _USE_DEFAULT else min_score
+        if threshold is None:
             return True
         score = self.agent_score(agent_id)
-        return score is not None and score >= self.min_score
+        return score is not None and score >= threshold
 
     def passport_status(self, agent_id: str) -> str:
         """Combined-tier check (AI_PASSPORT.md): the clearinghouse holds

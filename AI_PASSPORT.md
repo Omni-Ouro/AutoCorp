@@ -76,16 +76,16 @@ The shared canonical form is not a coincidence to note in passing: Eyro as a who
    6. Deny on anything wrong or unknown.
 2. A refused agent's reason can cite a missing or revoked Passport, alongside "unknown PoT score."
 3. Run ServiceNow's published test vectors against the clearinghouse's Passport check, unmodified.
-4. The demo company EyD Required LLC runs the combined tier: it requires Passport **and** EyD. A Passport alone is refused there, as is EyD with a revoked Passport.
+4. The demo site checks a presented Passport alongside EyD: EyD with a revoked Passport is refused, and revocation is pushed to the site so live sessions die immediately.
 
-## Status (2026-10-27)
+## Status (2026-10-28)
 
 Items 1–4 are built, not planned:
 
 - Clearinghouse: `POST /agents/{id}/passport` runs the full gateway check (fetch-on-refetch, ES256/JWKS signature verification, currency, binding matched to the agent's EyD identity, live revocation, fail-closed) and `GET /agents/{id}/standing` reports PoT score and Passport standing together ([clearinghouse-ref/passport.py](clearinghouse-ref/passport.py)).
 - Refusals at the combined tier cite `AI Passport required` / `AI Passport revoked`, alongside the PoT reasons.
 - ServiceNow's published vectors pass against our check, unmodified: verifier 81/81, caller 74/74, and the demo issuer's revocation endpoint passes the suite's live responder checks 8/8 ([passport-interop/](passport-interop/README.md)).
-- EyD Required LLC runs the combined tier in the demo matrix; the revocation run (valid EyD, revoked Passport) is refused there and classified Declined.
+- The demo site checks C's presented Passport at attestation; a revoked Passport is refused there and classified Declined. Revocation doesn't wait for session expiry: the issuer pushes a signed notice to the clearinghouse, which pushes it to the site, which drops the agent's sessions (`POST /passport/revocations`, `POST /revocation-notice`).
 
 ## One line for judges
 

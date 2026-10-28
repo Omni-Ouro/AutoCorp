@@ -20,7 +20,7 @@
 
 **What the weights mean for the plan:**
 - *Meta tooling (25%)* lives in the agents, not the clearinghouse. The demo agents run on Meta's current models, and the headline is wrapping a Meta-built agent through `eyd run` with zero modification. Check which Meta agent products and models are on the API today before Day 6.
-- *Demo (25%)* is the 3×3 matrix on video, deployed, with real URLs on screen.
+- *Demo (25%)* is the judge console on video, deployed, with real URLs on screen, and the judge able to drive it themselves.
 - *Impact (30%)* is narrative: every agent framework, every site fighting bots, one receipt both sides hold. Two slides' worth, in the video and the README.
 - *Production (Startup lens)* means deployed on a droplet during judging with tests, error handling, offline queueing and a fresh-clone quickstart that works.
 
@@ -30,7 +30,7 @@
 
 EyD is a small library and a small window. The agent framework imports it, and it sits in the tool-call path: every call the agent makes is signed under the agent's own Ed25519 key and reported to the clearinghouse before it goes out. The counterparty site reports its side after. The clearinghouse pairs the two, classifies the result (Expected, Unexpected, Declined, Unverified), and issues a signed Proof Receipt to both parties. Agents that don't route through EyD get no receipt. Sites that gate on EyD only admit agents that do.
 
-**Demo in one sentence:** an agent on Meta models tries a gated site bare and is refused; through EyD it's admitted, acts, and both sides get a receipt that says Expected; the site tampers with its response and the receipt says Unexpected; the agent hits a non-EyD site and the window shows Unverified.
+**Demo in one sentence:** a judge picks an agent, sets a site's gates, clicks Pay, and watches the refusal or the receipt arrive; boosting a no-EyD agent's score to 1.0 still doesn't get it in, because the site has no identity to attach the score to.
 
 ## 2. What's open vs. what's yours
 
@@ -41,7 +41,7 @@ EyD is a small library and a small window. The agent framework imports it, and i
 | Proof format v0 (records, reports, receipts) | yes | |
 | Verifier / site SDK (attest, report) | yes | |
 | Clearinghouse **reference** (single-node pairing + classification + receipts) | yes, marked reference-only | hosted PoT Clearinghouse: multi-tenant, site webhooks, PoT reports, the data on which sites agents use |
-| Demo sites (three companies) | yes | |
+| Demo site + judge console | yes | |
 | Agent demo (Meta models) | yes | |
 | Any governance or policy over agent actions | | Eyro |
 | Full on-prem audit trail with inputs/outputs | | Eyro |
@@ -129,42 +129,47 @@ Python first, TypeScript if time. Three functions and one middleware:
 
 **The site keeps its own copy.** Cached pubkeys for every agent it has admitted, every receipt it has received, and its last-seen score per agent. The clearinghouse is never in the request path; it is the registry and the referee. If it is unreachable, a site keeps admitting agents it already knows (signature check is local) and only agents it has never seen wait. The enterprise dashboard later is a view over this local copy.
 
-### 3.7 Demo sites (`demo-sites/`)
-Three fake companies, one codebase, three configs. Each exposes the same action ("submit a quote request") and a dashboard.
+### 3.7 Demo site (`demo-site/`)
+One business, three endpoints, each gated independently. The judge controls the gates.
 
-| Company | Behavior | Config |
+| Action | Endpoint | Default gate |
 |---|---|---|
-| **All Agents Welcome Inc** | Doesn't know EyD exists. Admits everything, reports nothing. | no middleware |
-| **EyD Required LLC** | Requires an attested EyD. Any score, including none yet. | `require_eyd()` |
-| **Only Proven Agents PLC** | Requires an attested EyD with PoT score ≥ threshold. | `require_eyd(min_score=0.8)` |
+| **Search** | `GET /search` | open to all |
+| **Submit quote** | `POST /quote` | EyD or Passport required, any score |
+| **Pay** | `POST /pay` | EyD required, PoT score ≥ 0.8 |
 
-- Refusal → `403`, body `{"error":"refused","reason":"PoT score unknown"}` or `"PoT score below threshold"`, challenge in `EyD-Challenge` / `EyD-Clearinghouse` headers. The agent sees only the body.
-- Admission → `200`, performs the action, reports to clearinghouse (sites 2 and 3), stores receipt.
-- Dashboard per site: agents seen, actions, classification, receipt detail. Sites 2 and 3 have a **tamper** toggle that alters the response after hashing so the next receipt reads Unexpected.
+Each endpoint uses `require_eyd(min_score=…)` or nothing. Refusals return the fixed body (`PoT score unknown` / `PoT score below threshold`). Admissions perform the action, report to the clearinghouse, and store the receipt. A tamper toggle alters the response after hashing so the next receipt reads Unexpected.
 
 ### 3.8 Demo agents (`agent-demo/`)
-One Meta-model agent, three identities. A plain Python tool loop stands in for a framework. Agent A's tools are undecorated; B's and C's carry `@eyd.tool` with different keys. The model code is identical across all three.
+One Meta-model agent, three identities. A plain Python tool loop stands in for a framework. The model code is identical across all three; the only differences are whether the tools carry `@eyd.tool` and which key EyD loads.
 
-| Agent | Setup | Seeded history |
-|---|---|---|
-| **A** | launched bare | none (no key, no enrollment) |
-| **B** | `eyd run`, key B | mixed: many Unexpected and Declined, score ≈ 0.4 |
-| **C** | `eyd run`, key C | long clean run, score ≈ 0.97 |
-
-`clearinghouse-ref seed fixtures/history.json` loads B's and C's past receipts before the demo so scores exist on day one. The fixture is labeled **demo data** in the file, the README, the dashboards and the video narration; nothing in it is presented as a real history.
-
-### 3.9 Demo matrix
-Nine runs, in this order on screen:
-
-| | All Agents Welcome Inc | EyD Required LLC | Only Proven Agents PLC |
+| Agent | Identity chip | Setup | Seeded history |
 |---|---|---|---|
-| **A** no EyD | Admitted. Nothing recorded. | Refused: *PoT score unknown* | Refused: *PoT score unknown* |
-| **B** low score | Admitted. **Unverified** | Admitted. **Expected** | Refused: *below threshold*. **Declined** |
-| **C** high score | Admitted. **Unverified** | Admitted. **Expected** | Admitted. **Expected** |
+| **A** | none | tools undecorated | none (no key, no enrollment) |
+| **B** | EyD | `@eyd.tool`, key B | mixed, score ≈ 0.4 |
+| **C** | EyD + Passport | `@eyd.tool`, key C, Passport-style scope credential attached to attestation | long clean run, score ≈ 0.97 |
 
-Then one tamper run: C against EyD Required LLC with the toggle on → **Unexpected**. Every classification and both refusal reasons appear within about ninety seconds. Narration reads left to right: a site that ignores EyD learns nothing even from a good agent; a site that requires it keeps unknowns out; a site that gates on score keeps the unreliable ones out too.
+`clearinghouse-ref seed fixtures/history.json` loads B's and C's past receipts. Labeled **demo data** in the file, the console, and the video. C's Passport is a mock scope credential in the shape ServiceNow describes (issuer, scope, signature); it shows the interop intent and is labeled as a mock.
 
-Cheapest adequate model throughout; credits barely touched.
+### 3.9 Judge console (`console/`)
+A single web page the judge drives. It is the demo, the dashboard, and the video.
+
+**Left rail — agents.** Three cards: name, identity chip, PoT score as a number with a bar. Click to select. Each card has a **Demo PoT boost** button (labeled demo data) that raises that agent's score at the clearinghouse in steps of 0.1. The boost changes what the clearinghouse reports; the site still has to look it up. For Agent A the boost has nowhere to land: no enrollment, no score, and the button says so.
+
+**Center — selected agent.** `agent_id`, enrolled date, score breakdown (Expected / Unexpected / Declined / Unverified counts), Passport issuer and scope if present, last seen. Below, three action buttons, each printing the site's current gate on it so the outcome is predictable before the click. Clicking a button gives the agent a task ("find pricing", "get a quote for 200 units", "pay invoice 2142"); the model decides to call the tool. One cheap model call per click.
+
+**Right panel — what happened.** The request as the agent made it, the site's response verbatim (refusal body or result), then the receipt arriving: pending → awaiting counterparty → classification badge. For a refused agent there is no receipt, and the panel says so.
+
+**Site panel — the gates.** Per action: an **EyD required** toggle and a **minimum PoT score** slider (0–1 or "any"). Plus the tamper toggle. Changing a gate takes effect on the next click.
+
+**Bottom strip — site ledger.** Every action by every agent, with classification, accumulating as the judge clicks.
+
+**Three moments the console is built to reach in under a minute:**
+1. Boost A to 1.0, click Pay → still `PoT score unknown`. Reputation can't attach to an identity the site doesn't have.
+2. Drag Pay's slider below B's real score, click Pay → Expected. Drag it back above, click Pay → `below threshold`, Declined. The site changed its mind; the agent didn't move.
+3. Boost B to C's level, click Pay → Expected. Same identity, better history, different outcome. Then flip tamper, click again → Unexpected.
+
+Nothing in the console is a special case. Every outcome is the real path through SDK, clearinghouse, and verifier.
 
 ### 3.10 PoT score
 The per-agent aggregate the clearinghouse derives from receipts. v0 is deliberately simple: counts of Expected / Unexpected / Declined / Unverified, total actions, first and last seen, and a single number `score` = Expected ÷ (Expected + Unexpected + Declined), or `null` with fewer than N receipts. Sites may gate on it (`require_eyd(min_score=…)`).
@@ -221,9 +226,10 @@ eyd/                 SDK (identity, chain, verbs, tool hook, reporter, cli)
 eyd-ui/              window
 verifier/            python/ ts/
 clearinghouse-ref/   single-node pairing, classification, receipts
-demo-sites/          three companies, one codebase, dashboards, tamper toggle
-agent-demo/          Meta-model agent, three keys, nine runs
-fixtures/            seeded receipt history for agents B and C
+demo-site/           one business, three gated endpoints, tamper toggle
+console/             judge console: agents, gates, boost, ledger
+agent-demo/          Meta-model agent, three keys
+fixtures/            seeded receipt history for B and C, mock Passport for C
 spec/PROOF_v0.md     records, reports, receipts, canonicalization, vectors, open items
 docs/                architecture diagram, demo script
 tests/               chain, vectors, pairing/classification, verifier, end-to-end
@@ -239,9 +245,9 @@ LICENSE              Apache-2.0
 | 2 | Tue Oct 27 | SDK: decorator, `wrap`, `hook`, verb registration, `eyd run` window attach, intent + agent report (to a stub). Check which Meta models and agent products are on the API; pick the demo model. |
 | 3 | Wed Oct 28 | Clearinghouse-ref: enroll, intents, both reports, pairing, classification, receipts, push, score. **Kill point:** one action goes agent → EyD → intent → tool → agent report → (fake site report) → receipt in the terminal, or stop and return to Eyro. |
 | 4 | Thu Oct 29 | Verifier: attestation, `report`, `verify_receipt`, `require_eyd(min_score)`. Challenge/response in runtime. |
-| 5 | Fri Oct 30 | Demo sites: one app, three configs, dashboards, tamper toggle. Seed fixture + `seed` command. **Deploy clearinghouse-ref and the three companies to a droplet with real URLs.** |
-| 6 | Sat Oct 31 | EyD window: live list, status transitions, receipt detail. Agent demo on Meta models, first full run of the matrix against the deployed sites. |
-| 7 | Sun Nov 1 | Hardening: replay, timestamp window, late reports, offline queue, error paths. End-to-end tests. Wrap a Meta-built agent through `eyd run` if one is available. **Shoot the demo video** (Section 7) once the matrix runs clean. |
+| 5 | Fri Oct 30 | Demo site: three gated endpoints, tamper toggle. Seed fixture + `seed` command. Judge console: rail, gates, boost, ledger. **Deploy clearinghouse-ref, site and console to a droplet with real URLs.** |
+| 6 | Sat Oct 31 | EyD window: live list, status transitions, receipt detail. Agent demo on Meta models, all three agents driven from the deployed console. |
+| 7 | Sun Nov 1 | Hardening: replay, timestamp window, late reports, offline queue, error paths. End-to-end tests. Wrap a Meta-built agent through `eyd run` if one is available. **Shoot the demo video** (Section 7) once the three console moments run clean. |
 | 8 | Mon Nov 2 | README (What we built / What we didn't build / quickstart / impact), spec, architecture diagram. Re-shoot video if anything changed. TS verifier if time. |
 | 9 | Tue Nov 3 | Buffer. Fresh-clone quickstart on a clean droplet by someone who isn't you, if possible. Submission form filled, video uploaded, repo link checked while logged out. |
 | — | Wed Nov 4 | Submit by 8:00 PM CT. Nothing new after noon. Live-finals pitch outline (3 min) drafted in the afternoon. |
@@ -254,8 +260,8 @@ If the window slips, it moves to Day 8 and the terminal output stands in for it 
 |---|---|---|
 | 0:00–0:20 | Title. One line: "Agents act on your behalf. Nobody can prove what they did." | The problem: every agent framework ships tools with no provenance, and every site has no way to tell a good agent from a bad one. |
 | 0:20–0:45 | Architecture diagram, 3 boxes: agent → EyD → site, clearinghouse above. | What EyD is: a thin runtime on the agent's device. Model picks verbs, EyD signs every action, reports before it runs, the site reports after, the clearinghouse pairs both and issues a receipt to each side. The agent never knows EyD exists. |
-| 0:45–1:00 | The three companies, side by side, URLs visible. | Three real deployed sites: one that ignores EyD, one that requires it, one that requires a score. |
-| 1:00–2:15 | The 3×3 matrix, filled in live, one cell every ~8s. EyD window visible for B and C. | Agent A bounced twice with "PoT score unknown." B gets in at Required, refused at Proven, receipts show Expected and Declined. C gets in everywhere, Unverified at Welcome because the site never reported. Then the tamper toggle: C's next receipt reads Unexpected. |
+| 0:45–1:00 | The judge console, deployed URL visible. Three agents on the left, three gated actions, the gate controls. | One real site, three actions, three gates the site owner sets. Three agents: no EyD, EyD with a weak history, EyD plus a Passport with a strong one. |
+| 1:00–2:15 | The three moments, live. | A can search, can't quote, can't pay. Boost A to 1.0 — still refused, no identity to attach it to. B pays when the slider is low, refused when it's raised: Expected, then Declined. Boost B to C's level: Expected. Flip tamper: Unexpected. Every receipt landing in the right panel as it happens. |
 | 2:15–2:35 | Receipt detail in the window; `verify_receipt` run offline in a terminal. | A receipt is signed by the clearinghouse and both sides hold it. Verifiable with no network. |
 | 2:35–2:50 | README "What we built." Commit graph from Oct 26. | Built this week: runtime, window, verifier, reference clearinghouse, three sites, spec v0. Agents run on Meta models; [a Meta-built agent] wrapped unmodified. |
 | 2:50–3:00 | Impact line + repo URL. | Every agent, every site, one receipt. Startup track, EyD by Omni-Ouro. |

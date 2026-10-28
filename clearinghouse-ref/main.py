@@ -8,6 +8,7 @@ Run from repo root:  uvicorn main:app --app-dir clearinghouse-ref --port 8787
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import sys
@@ -317,6 +318,32 @@ def agent_score(agent_id: str):
     return result
 
 
+@app.post("/agents/{agent_id}/boost")
+def boost_score(agent_id: str, payload: dict):
+    """DEMO DATA (judge console): add synthetic Expected receipts until
+    the score reaches current + step. Every boosted receipt is labeled
+    demo_data; an unenrolled agent has nowhere for a score to land."""
+    if agent_id not in agents:
+        raise HTTPException(404, "unknown agent: no enrollment to attach a score to")
+    step = float(payload.get("step", 0.1))
+    target = min(1.0, (agent_score(agent_id)["score"] or 0.0) + step)
+    added = 0
+    while added < 1000:
+        score = agent_score(agent_id)["score"]
+        if score is not None and (score >= target - 1e-9 or score >= 0.995):
+            break
+        rh = "sha256:" + hashlib.sha256(
+            f"boost-{agent_id}-{len(receipts)}-{added}".encode()).hexdigest()
+        intents[rh] = {"record_hash": rh, "agent_id": agent_id, "target": "boost.demo",
+                       "state": "receipted", "opened_at": datetime.now(timezone.utc).timestamp()}
+        receipts[rh] = {"record_hash": rh, "agent_id": agent_id, "site_id": "DEMO-BOOST",
+                        "classification": "Expected", "target": "boost.demo",
+                        "ts": utc_now(), "ch_sig": "ed25519:demo", "demo_data": True}
+        added += 1
+    return {"agent_id": agent_id, "score": agent_score(agent_id)["score"],
+            "added": added, "demo_data": True}
+
+
 @app.post("/agents/{agent_id}/passport")
 def present_passport(agent_id: str, payload: dict):
     """An agent presents an AI Passport. The clearinghouse runs the
@@ -399,7 +426,8 @@ def agent_standing(agent_id: str):
             passport_status = _passport_status(outcome, step)
     return {"agent_id": agent_id, "score": score.get("score"),
             "passport_status": passport_status,
-            "passport_subject": (entry or {}).get("subject")}
+            "passport_subject": (entry or {}).get("subject"),
+            "passport_issuer": ((entry or {}).get("passport") or {}).get("issuer")}
 
 
 @app.post("/sweep")

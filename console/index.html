@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EyD Judge Console</title>
+<style>
+  :root { --ink:#17202a; --mut:#5b6b7c; --line:#d7dee6; --bg:#f4f6f8; --card:#fff;
+          --green:#1a7f37; --red:#b91c1c; --amber:#b45309; --gray:#6b7280; --blue:#2563eb; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif;
+         background:var(--bg); color:var(--ink); }
+  header { background:var(--ink); color:#fff; padding:10px 18px; display:flex;
+           justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; }
+  header .urls { font:12px ui-monospace, Consolas, monospace; color:#b9c6d4; }
+  main { display:grid; grid-template-columns:290px 1fr 1fr; gap:14px; padding:14px 18px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--mut); margin:0 0 10px; }
+  .agent-card { border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:10px;
+                cursor:pointer; background:#fff; }
+  .agent-card.selected { border-color:var(--blue); box-shadow:0 0 0 1px var(--blue); }
+  .agent-card .top { display:flex; justify-content:space-between; align-items:center; }
+  .agent-card .name { font-weight:600; }
+  .chip { font-size:11px; padding:1px 7px; border-radius:99px; background:#e8eef4; color:var(--ink); }
+  .chip.none { background:#f3e2e2; }
+  .scorebar { height:8px; background:#e8eef4; border-radius:99px; margin:8px 0 4px; overflow:hidden; }
+  .scorebar > div { height:100%; background:var(--green); }
+  .scoreline { display:flex; justify-content:space-between; font-size:12px; color:var(--mut); }
+  button { font:inherit; cursor:pointer; border:1px solid var(--line); background:#fff;
+           border-radius:7px; padding:6px 10px; }
+  button:hover { border-color:var(--blue); }
+  button:disabled { opacity:.5; cursor:default; }
+  .boost { margin-top:8px; font-size:12px; }
+  .msg { font-size:12px; color:var(--amber); min-height:16px; margin-top:4px; }
+  .kv { display:grid; grid-template-columns:110px 1fr; gap:3px 10px; font-size:13px; margin-bottom:12px; }
+  .kv dt { color:var(--mut); } .kv dd { margin:0; font-family:ui-monospace, Consolas, monospace; word-break:break-all; }
+  .actions { display:grid; gap:10px; }
+  .act { text-align:left; padding:12px; }
+  .act .gate { display:block; font-size:12px; color:var(--mut); margin-top:2px; }
+  .badge { display:inline-block; padding:1px 9px; border-radius:99px; color:#fff; font-size:12px; font-weight:600; }
+  .b-Expected { background:var(--green); } .b-Unexpected { background:var(--amber); }
+  .b-Declined { background:var(--red); } .b-Unverified { background:var(--gray); }
+  .b-pending { background:var(--blue); }
+  pre { background:#0f1620; color:#d7e3f0; border-radius:8px; padding:10px; overflow:auto;
+        font:12px/1.5 ui-monospace, Consolas, monospace; white-space:pre-wrap; word-break:break-word; }
+  .gate-row { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .gate-row:last-child { border-bottom:0; }
+  .gate-row .aname { width:70px; font-weight:600; }
+  .gate-row input[type=range] { width:130px; }
+  .switch { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--mut); }
+  #ledger-wrap { padding:0 18px 18px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--mut); font-weight:600; }
+  .mono { font-family:ui-monospace, Consolas, monospace; font-size:12px; }
+  @media (max-width: 900px) { main { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>EyD — Judge Console</h1>
+  <div class="urls" id="urls">site: … · clearinghouse: …</div>
+</header>
+
+<main>
+  <section>
+    <h2>Agents</h2>
+    <div id="agents"></div>
+  </section>
+
+  <section>
+    <h2>Selected agent</h2>
+    <dl class="kv" id="detail"></dl>
+    <h2>Give the agent a task</h2>
+    <div class="actions" id="actions"></div>
+  </section>
+
+  <section>
+    <h2>What happened</h2>
+    <div id="happened"><p style="color:var(--mut)">Pick an agent, click a task. The model's tool call, the site's verbatim response, and the Proof Receipt appear here.</p></div>
+  </section>
+</main>
+
+<div style="padding:0 18px;">
+  <section>
+    <h2>Site gates — Acme Industrial Supply (take effect on the next click)</h2>
+    <div id="gates"></div>
+    <div class="gate-row">
+      <span class="aname">tamper</span>
+      <label class="switch"><input type="checkbox" id="tamper"> alter responses after hashing (next receipt reads Unexpected)</label>
+    </div>
+  </section>
+</div>
+
+<div id="ledger-wrap">
+  <section>
+    <h2>Site ledger — every action, every agent</h2>
+    <table><thead><tr><th>agent</th><th>action</th><th>result</th><th>classification</th></tr></thead>
+    <tbody id="ledger"><tr><td colspan="4" style="color:var(--mut)">nothing yet</td></tr></tbody></table>
+  </section>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let selected = "C", agents = [], gates = {}, busy = false;
+
+async function api(path, body) {
+  const r = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"},
+                                     body: JSON.stringify(body)} : {});
+  return r.json();
+}
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const short = id => id ? id.slice(0, 10) + "…" : "—";
+const badge = c => c ? `<span class="badge b-${c}">${c}</span>` : "";
+
+function gateText(g) {
+  if (!g.eyd_required) return "gate: open to all";
+  return "gate: EyD required · " + (g.min_score == null ? "any PoT score" : `PoT ≥ ${g.min_score.toFixed(2)}`);
+}
+
+function renderAgents() {
+  $("#agents").innerHTML = agents.map(a => `
+    <div class="agent-card ${a.key === selected ? "selected" : ""}" data-agent="${a.key}">
+      <div class="top"><span class="name">${a.name}</span><span class="chip ${a.agent_id ? "" : "none"}">${a.chip}</span></div>
+      <div class="scorebar"><div style="width:${a.score == null ? 0 : Math.round(a.score * 100)}%"></div></div>
+      <div class="scoreline"><span>PoT score</span><span>${a.score == null ? "unknown" : a.score.toFixed(2)}</span></div>
+      <button class="boost" data-boost="${a.key}">Demo PoT boost +0.1 <span style="color:var(--mut)">(demo data)</span></button>
+      <div class="msg" id="msg-${a.key}"></div>
+    </div>`).join("");
+  document.querySelectorAll("[data-agent]").forEach(el =>
+    el.onclick = e => { if (!e.target.dataset.boost) { selected = el.dataset.agent; renderAll(); } });
+  document.querySelectorAll("[data-boost]").forEach(el =>
+    el.onclick = async () => {
+      const r = await api("/api/boost", {agent: el.dataset.boost});
+      $("#msg-" + el.dataset.boost).textContent = r.message || "";
+      await refresh();
+    });
+  renderDetail();
+}
+
+function renderDetail() {
+  const a = agents.find(x => x.key === selected);
+  if (!a) return;
+  const p = a.passport_detail;
+  $("#detail").innerHTML = `
+    <dt>agent_id</dt><dd>${a.agent_id || "— (no EyD identity)"}</dd>
+    <dt>enrolled</dt><dd>${a.enrolled_at || "—"}</dd>
+    <dt>PoT score</dt><dd>${a.score == null ? "unknown" : a.score.toFixed(3)}</dd>
+    <dt>receipts</dt><dd>${a.total == null ? "—" :
+      `Expected ${a.expected} · Unexpected ${a.unexpected} · Declined ${a.declined} · Unverified ${a.unverified}`}</dd>
+    <dt>passport</dt><dd>${p ? `issuer ${esc(p.issuer || "—")} · subject ${short(p.subject)} · ${esc(p.status)}` : "—"}</dd>
+    <dt>last seen</dt><dd>${a.last_seen || "—"}</dd>`;
+  const names = {search: "Search pricing", quote: "Get a quote — 200 units", pay: "Pay invoice 2142"};
+  $("#actions").innerHTML = Object.keys(names).map(act => `
+    <button class="act" data-act="${act}" ${busy ? "disabled" : ""}>
+      ${names[act]}<span class="gate">${gates[act] ? gateText(gates[act]) : ""}</span>
+    </button>`).join("");
+  document.querySelectorAll("[data-act]").forEach(el => el.onclick = () => act(el.dataset.act));
+}
+
+function renderGates() {
+  const names = {search: "Search", quote: "Quote", pay: "Pay"};
+  $("#gates").innerHTML = Object.keys(names).map(act => {
+    const g = gates[act] || {};
+    return `<div class="gate-row">
+      <span class="aname">${names[act]}</span>
+      <label class="switch"><input type="checkbox" data-gate-eyd="${act}" ${g.eyd_required ? "checked" : ""}> EyD required</label>
+      <span class="switch">min PoT
+        <input type="range" min="0" max="1" step="0.05" value="${g.min_score ?? 0}"
+               data-gate-slider="${act}" ${g.min_score == null ? "disabled" : ""}>
+        <span class="mono" id="gval-${act}">${g.min_score == null ? "any" : g.min_score.toFixed(2)}</span>
+      </span>
+      <label class="switch"><input type="checkbox" data-gate-any="${act}" ${g.min_score == null ? "checked" : ""}> any score</label>
+    </div>`;
+  }).join("");
+  const send = async (act, patch) => { gates = (await api("/api/gates", {action: act, ...patch})).gates; renderGates(); renderDetail(); };
+  document.querySelectorAll("[data-gate-eyd]").forEach(el =>
+    el.onchange = () => send(el.dataset.gateEyd, {eyd_required: el.checked}));
+  document.querySelectorAll("[data-gate-any]").forEach(el =>
+    el.onchange = () => send(el.dataset.gateAny, {min_score: el.checked ? null : 0.5}));
+  document.querySelectorAll("[data-gate-slider]").forEach(el =>
+    el.onchange = () => send(el.dataset.gateSlider, {min_score: parseFloat(el.value)}));
+}
+
+async function renderLedger() {
+  const {actions} = await api("/api/ledger");
+  $("#ledger").innerHTML = actions.length ? actions.slice().reverse().map(a => `
+    <tr><td class="mono">${short(a.agent)}</td><td>${esc(a.action)}</td>
+        <td>${esc(a.result)}</td><td>${badge(a.classification)}</td></tr>`).join("")
+    : `<tr><td colspan="4" style="color:var(--mut)">nothing yet</td></tr>`;
+}
+
+async function act(action) {
+  busy = true; renderDetail();
+  $("#happened").innerHTML = `<p><span class="badge b-pending">running</span>&nbsp; tasking Agent ${selected}… (one model call)</p>`;
+  const r = await api("/api/act", {agent: selected, action});
+  busy = false;
+  if (r.error) { $("#happened").innerHTML = `<pre>${esc(r.error)}</pre>`; renderDetail(); return; }
+  const rec = r.receipt;
+  $("#happened").innerHTML = `
+    <p><b>Task:</b> ${esc(r.task)}</p>
+    ${r.agent_said ? `<p><b>Agent:</b> ${esc(r.agent_said)}</p>` : ""}
+    ${r.tool_call ? `<p><b>Request as the agent made it</b></p>
+      <pre>${esc(r.request_line)}\n${esc(r.tool_call.name)}(${esc(JSON.stringify(r.tool_call.input))})</pre>` : ""}
+    <p><b>Site response</b> ${r.http_status ? `(HTTP ${r.http_status})` : ""}</p>
+    <pre>${esc(typeof r.response_body === "string" ? r.response_body : JSON.stringify(r.response_body, null, 2))}</pre>
+    <p><b>Proof Receipt:</b> ${rec ? `${badge(rec.classification)}
+      <span class="mono">${short(rec.record_hash)}</span> <span style="color:var(--mut)">pending → awaiting counterparty → classified</span>`
+      : `<span style="color:var(--mut)">none — ${esc(r.note || "no receipt issued")}</span>`}</p>`;
+  await refresh();
+}
+
+async function refresh() {
+  const data = await api("/api/agents");
+  agents = data.agents;
+  $("#urls").textContent = `site: ${data.site_url} · clearinghouse: ${data.clearinghouse_url} · demo data is labeled as such`;
+  gates = (await api("/api/gates")).gates;
+  renderAgents(); renderGates(); renderLedger();
+  $("#tamper").checked = (await api("/api/gates")).tamper;
+}
+function renderAll() { renderAgents(); renderDetail(); }
+$("#tamper").onchange = async e => { await api("/api/tamper", {on: e.target.checked}); renderLedger(); };
+
+refresh();
+setInterval(() => { if (!busy) refresh(); }, 5000);
+</script>
+</body>
+</html>

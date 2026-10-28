@@ -39,10 +39,12 @@ pytest              # canonicalization vectors, records, chain
   classification, receipts, PoT score, fork detection. *(reference only — see below)*
 - **Verifier / site SDK** (`verifier/python/`) — attestation, sessions,
   reporting, offline `verify_receipt`, site score gating.
-- **Demo sites** (`demo-sites/`) — three companies, one codebase, tamper toggle.
-- **Agent demo** (`agent-demo/run.py`) — three identities, full 3×3 matrix + tamper run.
+- **Demo site** (`demo-site/`) — one business, three independently gated
+  actions (search / quote / pay), runtime gate controls, tamper toggle.
+- **Judge console** (`console/`) — the demo page: pick an agent, set the
+  site's gates, click a task, watch the refusal or the receipt land.
 - **EyD window** (`eyd-ui/window.py`) — live action list and receipt viewer (local web view).
-- **Demo agents** (`agent-demo/`) — one Meta-model agent ([agent.py](agent-demo/agent.py)), three identities: A's tools undecorated, B's/C's carry `@eyd.tool` under different keys, model code identical. `run_agents.py` runs the full matrix on the real model, `run.py` runs it deterministically without the LLM.
+- **Demo agents** (`agent-demo/`) — one Meta-model agent ([agent.py](agent-demo/agent.py)), three identities: A's tools undecorated, B's/C's carry `@eyd.tool` under different keys, model code identical. The console drives it, one model call per click.
 
 ## Run the demo locally
 
@@ -51,10 +53,9 @@ pip install -e ".[clearinghouse]"
 ISSUER_URL=http://localhost:8010 python passport-demo/issuer.py &   # demo Passport issuer :8010
 CLEARINGHOUSE_KEY_FILE=.tmp-ch-key.json PASSPORT_ISSUER=http://localhost:8010 \
   PASSPORT_JWKS_URL=http://localhost:8010/jwks python clearinghouse-ref/main.py &  # :8787
-SITE_MODE=welcome  SITE_PORT=8001 python demo-sites/main.py &
-SITE_MODE=required SITE_PORT=8002 python demo-sites/main.py &   # combined tier: EyD + Passport
-SITE_MODE=proven   SITE_PORT=8003 python demo-sites/main.py &
-python agent-demo/run.py                      # 3x3 matrix + tamper + revoked-Passport runs
+SITE_PORT=8001 python demo-site/main.py &                          # one site, three gated actions
+CONSOLE_PORT=8080 python console/server.py &                       # judge console
+# open http://127.0.0.1:8080 and drive the demo
 ```
 
 ## What we didn't build (third-party / hosted)
