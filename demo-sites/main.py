@@ -19,11 +19,14 @@ from fastapi.responses import JSONResponse, Response  # noqa: E402
 
 from eyd.canonical import hash_bytes  # noqa: E402
 from eyd.identity import Identity  # noqa: E402
-from verifier import EyDSite, REFUSAL_LOW, REFUSAL_UNKNOWN  # noqa: E402
+from verifier import (  # noqa: E402
+    EyDSite, REFUSAL_LOW, REFUSAL_NO_PASSPORT, REFUSAL_PASSPORT_REVOKED, REFUSAL_UNKNOWN,
+)
 
 MODES = {
     "welcome": {"company": "All Agents Welcome Inc", "min_score": None, "gated": False},
-    "required": {"company": "EyD Required LLC", "min_score": None, "gated": True},
+    # Combined tier (AI_PASSPORT.md): EyD + AI Passport, both required.
+    "required": {"company": "EyD Required LLC", "min_score": None, "gated": True, "passport": True},
     "proven": {"company": "Only Proven Agents PLC", "min_score": 0.8, "gated": True},
 }
 
@@ -33,7 +36,8 @@ def make_app(mode: str, *, clearinghouse_url: str = "http://127.0.0.1:8787",
     cfg = MODES[mode]
     site_identity = identity or Identity.generate(kind="site")
     site = EyDSite(site_identity, clearinghouse_url=clearinghouse_url,
-                   domain=domain, min_score=cfg["min_score"] if cfg["gated"] else None)
+                   domain=domain, min_score=cfg["min_score"] if cfg["gated"] else None,
+                   require_passport=bool(cfg.get("passport")))
     site.enroll()
     app = FastAPI(title=cfg["company"])
     app.state.site = site
@@ -93,6 +97,15 @@ def make_app(mode: str, *, clearinghouse_url: str = "http://127.0.0.1:8787",
                     site.report(record_hash_, att_agent, "declined", _body_bytes(reason))
                 app.state.actions.append({"agent": att_agent, "result": f"refused: {reason['reason']}"})
                 return JSONResponse(reason, status_code=403)
+            if site.require_passport:
+                pstatus = site.passport_status(att_agent)
+                if pstatus != "valid":
+                    reason = REFUSAL_PASSPORT_REVOKED if pstatus == "revoked" \
+                        else REFUSAL_NO_PASSPORT
+                    if record_hash_ and att_agent:
+                        site.report(record_hash_, att_agent, "declined", _body_bytes(reason))
+                    app.state.actions.append({"agent": att_agent, "result": f"refused: {reason['reason']}"})
+                    return JSONResponse(reason, status_code=403)
             session_token = token
         else:
             return _refusal(site, REFUSAL_UNKNOWN, challenge=True)

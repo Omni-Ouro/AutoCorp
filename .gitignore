@@ -5,6 +5,7 @@ __pycache__/
 .tmp-eyd-test/
 .tmp-ch-key.json
 agent-demo/.keys/
+passport-demo/.keys/
 .eyd/
 *.jsonl
 node_modules/

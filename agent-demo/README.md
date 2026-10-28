@@ -19,6 +19,12 @@ python agent-demo/run_agents.py --tamper   # plus the tamper -> Unexpected run
 python agent-demo/run.py                   # same matrix, no LLM (fast, deterministic)
 ```
 
-Validated live 2026-10-26: A refused at both gated sites ("PoT score
+EyD Required LLC runs the combined tier (EyD + AI Passport; B and C hold
+demo Passports issued by `passport-demo/issuer.py`, registered at the
+clearinghouse). `run.py` adds a revoked-Passport run: valid EyD, revoked
+Passport -> refused there, Declined.
+
+Validated live 2026-10-27: A refused at both gated sites ("PoT score
 unknown"); B Unverified/Expected/Declined; C Unverified/Expected/Expected;
-tamper run Unexpected.
+tamper run Unexpected; revoked-Passport run refused ("AI Passport
+revoked"), Declined.

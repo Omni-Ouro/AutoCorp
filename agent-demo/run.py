@@ -27,6 +27,7 @@ from eyd.records import utc_now  # noqa: E402
 from eyd.reporter import Reporter, request_json  # noqa: E402
 
 CH = "http://127.0.0.1:8787"
+ISSUER = "http://127.0.0.1:8010"
 SITES = [("All Agents Welcome Inc", 8001), ("EyD Required LLC", 8002), ("Only Proven Agents PLC", 8003)]
 KEYS = Path(__file__).parent / ".keys"
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "history.json"
@@ -60,6 +61,22 @@ def seed_history(label: str, ident: Identity) -> None:
     print(f"seeded {label}: {body} (DEMO DATA)")
 
 
+def ensure_passport(label: str, ident: Identity) -> bool:
+    """Combined tier: B/C also hold AI Passports, registered at the
+    clearinghouse. Passport alone would not suffice anywhere."""
+    try:
+        _, passport, _ = request_json("POST", f"{ISSUER}/issue", {"agent_id": ident.id})
+        _, body, _ = request_json("POST", f"{CH}/agents/{ident.id}/passport",
+                                  {"passport": passport})
+        print(f"passport {label}: {body.get('passport_status')} "
+              f"(subject {body.get('subject', '')[:8]}…)")
+        return body.get("passport_status") == "valid"
+    except Exception as e:
+        print(f"passport {label}: issuer unavailable ({e}); "
+              "EyD Required LLC will refuse — start passport-demo/issuer.py")
+        return False
+
+
 def bare_tool(url: str):
     return {"submit_quote_request": make_submit_quote_request(url)}
 
@@ -90,12 +107,16 @@ def main() -> int:
         ident = load_or_create(label)
         reporter.enroll(ident)
         idents[label] = ident
-        marker = KEYS / label / ".seeded"
-        if not marker.exists():
-            seed_history(label, ident)
-            marker.write_text("demo data seeded\n")
+        # Seed unless the clearinghouse already holds the history (its
+        # store is in-memory; a restart needs the demo data reloaded).
         seeded[label] = request_json("GET", f"{CH}/agents/{ident.id}/score")[1].get("score")
+        if seeded[label] is None:
+            seed_history(label, ident)
+            (KEYS / label).mkdir(exist_ok=True)
+            (KEYS / label / ".seeded").write_text("demo data seeded\n")
+            seeded[label] = request_json("GET", f"{CH}/agents/{ident.id}/score")[1].get("score")
         print(f"agent {label} {ident.id} score={seeded[label]}")
+        ensure_passport(label, ident)
 
     rows = []
     for company, port in SITES:  # A bare
@@ -114,6 +135,16 @@ def main() -> int:
     request_json("POST", "http://localhost:8002/tamper", {"on": False})
     rows.append(["C (tamper)", "EyD Required LLC", result.status, result.body[:60],
                  latest_receipt("C", reporter)])
+    # Revoked Passport run: EyD still valid, Passport revoked -> refused.
+    try:
+        request_json("POST", f"{ISSUER}/revoke", {"agent_id": idents["C"].id, "revoked": True})
+        tools, _ = eyd_tool("http://localhost:8002/quote", "C", idents["C"])
+        result = tools["submit_quote_request"](need=NEED)
+        rows.append(["C (revoked)", "EyD Required LLC", result.status, result.body[:60],
+                     latest_receipt("C", reporter)])
+        request_json("POST", f"{ISSUER}/revoke", {"agent_id": idents["C"].id, "revoked": False})
+    except Exception as e:
+        print(f"revoked-passport run skipped: {e}")
 
     print(f"\n{'agent':<12} {'site':<26} {'http':<5} {'classification':<15} body")
     for agent, company, status, body, cls in rows:

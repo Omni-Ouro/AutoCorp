@@ -33,7 +33,8 @@ pytest              # canonicalization vectors, records, chain
   reporting with offline queue, CLI (`init`/`enroll`/`run`/`verify-local`).
   `eyd run` only opens the window attached to the local chain.
 - **Proof format v0** (`spec/PROOF_v0.md`) — records, reports, receipts,
-  canonicalization + test vectors, attestation.
+  canonicalization (RFC 8785) + test vectors, attestation.
+- **AI Passport interoperability** (`passport-interop/`, [AI_PASSPORT.md](AI_PASSPORT.md)) — the clearinghouse also reads ServiceNow AI Passports as an identity credential alongside EyD (Passport alone never suffices by default; Passport + EyD is the combined tier). ServiceNow's published test vectors pass against our check unmodified: verifier 81/81, caller 74/74.
 - **Clearinghouse reference** (`clearinghouse-ref/`) — single-node pairing,
   classification, receipts, PoT score, fork detection. *(reference only — see below)*
 - **Verifier / site SDK** (`verifier/python/`) — attestation, sessions,
@@ -47,11 +48,13 @@ pytest              # canonicalization vectors, records, chain
 
 ```bash
 pip install -e ".[clearinghouse]"
-python clearinghouse-ref/main.py &            # :8787
+ISSUER_URL=http://localhost:8010 python passport-demo/issuer.py &   # demo Passport issuer :8010
+CLEARINGHOUSE_KEY_FILE=.tmp-ch-key.json PASSPORT_ISSUER=http://localhost:8010 \
+  PASSPORT_JWKS_URL=http://localhost:8010/jwks python clearinghouse-ref/main.py &  # :8787
 SITE_MODE=welcome  SITE_PORT=8001 python demo-sites/main.py &
-SITE_MODE=required SITE_PORT=8002 python demo-sites/main.py &
+SITE_MODE=required SITE_PORT=8002 python demo-sites/main.py &   # combined tier: EyD + Passport
 SITE_MODE=proven   SITE_PORT=8003 python demo-sites/main.py &
-python agent-demo/run.py                      # the 3x3 matrix + tamper run
+python agent-demo/run.py                      # 3x3 matrix + tamper + revoked-Passport runs
 ```
 
 ## What we didn't build (third-party / hosted)

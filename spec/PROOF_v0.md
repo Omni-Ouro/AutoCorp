@@ -65,7 +65,7 @@ PoT score = Expected ÷ (Expected + Unexpected + Declined), or `null` with fewer
 3. Site verifies signature (local pubkey cache, else clearinghouse), nonce unused, `ts` within 60s; admits and returns `EyD-Session: <token>` (15 min).
 4. Later requests carry `EyD-Session` and `EyD-Record`; re-attest on expiry, invisible to the agent.
 
-Refusal bodies (the only thing an agent ever sees): `{"error":"refused","reason":"PoT score unknown"}` or `{"error":"refused","reason":"PoT score below threshold"}`.
+Refusal bodies (the only thing an agent ever sees): `{"error":"refused","reason":"PoT score unknown"}`, `{"error":"refused","reason":"PoT score below threshold"}`, and at combined-tier sites (EyD + AI Passport, see AI_PASSPORT.md) `{"error":"refused","reason":"AI Passport required"}` or `{"error":"refused","reason":"AI Passport revoked"}`.
 
 ## Test vector (canonicalization)
 

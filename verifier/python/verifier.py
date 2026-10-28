@@ -24,6 +24,8 @@ from eyd.records import utc_now  # noqa: E402
 SESSION_TTL = 900  # 15 min
 REFUSAL_UNKNOWN = {"error": "refused", "reason": "PoT score unknown"}
 REFUSAL_LOW = {"error": "refused", "reason": "PoT score below threshold"}
+REFUSAL_NO_PASSPORT = {"error": "refused", "reason": "AI Passport required"}
+REFUSAL_PASSPORT_REVOKED = {"error": "refused", "reason": "AI Passport revoked"}
 
 
 def _request_json(method: str, url: str, payload: dict | None = None, timeout: float = 5.0):
@@ -92,11 +94,12 @@ class EyDSite:
     """Stateful site helper behind `require_eyd` in the demo sites."""
 
     def __init__(self, identity: Identity, *, clearinghouse_url: str, domain: str,
-                 min_score: float | None = None):
+                 min_score: float | None = None, require_passport: bool = False):
         self.identity = identity
         self.clearinghouse_url = clearinghouse_url.rstrip("/")
         self.domain = domain
         self.min_score = min_score
+        self.require_passport = require_passport
         self.pubkey_cache: dict[str, str] = {}
         self.sessions: dict[str, tuple[str, float]] = {}
         self.nonces: dict[str, float] = {}
@@ -161,6 +164,15 @@ class EyDSite:
             return True
         score = self.agent_score(agent_id)
         return score is not None and score >= self.min_score
+
+    def passport_status(self, agent_id: str) -> str:
+        """Combined-tier check (AI_PASSPORT.md): the clearinghouse holds
+        the agent's Passport standing, re-asked live at the issuer."""
+        status, body = _request_json(
+            "GET", f"{self.clearinghouse_url}/agents/{agent_id}/standing")
+        if status == 200:
+            return body.get("passport_status", "unknown")
+        return "unknown"  # fail closed: unable to tell
 
     # -- reporting ------------------------------------------------------
     def report(self, record_hash_: str, agent_id: str, outcome: str,

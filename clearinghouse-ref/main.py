@@ -20,12 +20,65 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fastapi import FastAPI, HTTPException  # noqa: E402
 
 from classify import classify, compute_score  # noqa: E402
+from passport import check_passport_live  # noqa: E402
 from eyd.canonical import hash_obj, record_hash  # noqa: E402
 from eyd.identity import Identity, derive_id, verify_b64  # noqa: E402
 from eyd.records import utc_now  # noqa: E402
+from eyd.reporter import request_json  # noqa: E402
 
 WINDOW_SECONDS = int(os.environ.get("CH_WINDOW_SECONDS", "600"))
 MIN_RECEIPTS = int(os.environ.get("POT_MIN_RECEIPTS", "5"))
+
+# AI Passport trust anchor (AI_PASSPORT.md): one configured issuer, never
+# taken from a presented Passport. Unset = Passport checks disabled.
+PASSPORT_ISSUER = os.environ.get("PASSPORT_ISSUER", "")
+PASSPORT_AUTHORITY = os.environ.get("PASSPORT_AUTHORITY", "urn:eyd:clearinghouse")
+_passport_jwks_cache: dict = {}
+
+
+def passport_anchors() -> dict | None:
+    if not PASSPORT_ISSUER:
+        return None
+    if "jwks" not in _passport_jwks_cache:
+        url = os.environ.get("PASSPORT_JWKS_URL", PASSPORT_ISSUER + "/jwks")
+        try:
+            _, jwks, _ = request_json("GET", url)
+        except Exception:
+            return None
+        _passport_jwks_cache["jwks"] = jwks
+    responders = [r for r in os.environ.get("PASSPORT_RESPONDERS", PASSPORT_ISSUER).split(",") if r]
+    return {PASSPORT_ISSUER: {"jwks": _passport_jwks_cache["jwks"],
+                              "responders": responders}}
+
+
+def _http_get(url: str) -> dict:
+    try:
+        status, body, headers = request_json("GET", url)
+        return {"status": status, "body": body, "headers": headers}
+    except Exception:
+        return {"error": "timeout"}
+
+
+def _fetch_passport(authority: str, identifier: str):
+    try:
+        from urllib.parse import urlencode
+
+        url = PASSPORT_ISSUER + "/passports?" + urlencode(
+            {"authority": authority or "", "identifier": identifier or ""})
+        status, body, _ = request_json("GET", url)
+        return body if status == 200 else None
+    except Exception:
+        return None
+
+
+def _passport_status(outcome: str, step: str) -> str:
+    if outcome == "accept":
+        return "valid"
+    if outcome == "reject":
+        return "invalid"
+    if step in ("revocation", "status", "parent"):
+        return "revoked"  # spec treats these as revoked
+    return "invalid"
 
 app = FastAPI(title="EyD Clearinghouse (reference)", version="0.1")
 
@@ -49,6 +102,7 @@ intents: dict[str, dict] = {}  # record_hash -> intent + state + opened_at (epoc
 agent_reports: dict[str, dict] = {}
 site_reports: dict[str, dict] = {}
 receipts: dict[str, dict] = {}  # record_hash -> receipt
+passports: dict[str, dict] = {}  # agent_id -> {passport, subject, checked outcome}
 dropped_site_reports: list[dict] = []
 seq_seen: dict[tuple[str, int], str] = {}  # (agent_id, seq) -> record_hash (fork detection)
 
@@ -259,6 +313,56 @@ def agent_score(agent_id: str):
     result.update({"agent_id": agent_id, "first_seen": first, "last_seen": last,
                    "forked": agents[agent_id].get("forked", False)})
     return result
+
+
+@app.post("/agents/{agent_id}/passport")
+def present_passport(agent_id: str, payload: dict):
+    """An agent presents an AI Passport. The clearinghouse runs the
+    gateway check with the presenter bound to the agent's EyD identity
+    (the holder binding), and records the outcome."""
+    if agent_id not in agents:
+        raise HTTPException(404, "unknown agent")
+    anchors = passport_anchors()
+    if anchors is None:
+        raise HTTPException(503, "no Passport issuer configured")
+    passport = payload.get("passport")
+    if not isinstance(passport, dict):
+        raise HTTPException(400, "passport required")
+    presenter = {"authority": PASSPORT_AUTHORITY, "identifier": agent_id}
+    outcome, step = check_passport_live(
+        passport, anchors, presenter=presenter, http_get=_http_get,
+        fetch_passport=_fetch_passport, now=utc_now())
+    passports[agent_id] = {"passport": passport, "subject": passport.get("subject"),
+                           "outcome": outcome, "step": step}
+    return {"agent_id": agent_id, "outcome": outcome, "step": step,
+            "passport_status": _passport_status(outcome, step),
+            "subject": passport.get("subject")}
+
+
+@app.get("/agents/{agent_id}/standing")
+def agent_standing(agent_id: str):
+    """PoT score + AI Passport standing, checked together. Sites that
+    run the combined tier ask here; revocation is re-asked live."""
+    if agent_id not in agents:
+        raise HTTPException(404, "unknown agent")
+    score = agent_score(agent_id)
+    entry = passports.get(agent_id)
+    if entry is None:
+        passport_status = "missing"
+    else:
+        anchors = passport_anchors()
+        if anchors is None:
+            passport_status = "unknown"
+        else:
+            presenter = {"authority": PASSPORT_AUTHORITY, "identifier": agent_id}
+            outcome, step = check_passport_live(
+                entry["passport"], anchors, presenter=presenter,
+                http_get=_http_get, fetch_passport=_fetch_passport, now=utc_now())
+            entry.update({"outcome": outcome, "step": step})
+            passport_status = _passport_status(outcome, step)
+    return {"agent_id": agent_id, "score": score.get("score"),
+            "passport_status": passport_status,
+            "passport_subject": (entry or {}).get("subject")}
 
 
 @app.post("/sweep")

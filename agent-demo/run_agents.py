@@ -30,6 +30,7 @@ from eyd.records import utc_now  # noqa: E402
 from eyd.reporter import Reporter, request_json  # noqa: E402
 
 CH = "http://127.0.0.1:8787"
+ISSUER = "http://127.0.0.1:8010"
 SITES = [("All Agents Welcome Inc", 8001), ("EyD Required LLC", 8002), ("Only Proven Agents PLC", 8003)]
 KEYS = Path(__file__).parent / ".keys"
 FIXTURE = ROOT / "fixtures" / "history.json"
@@ -46,8 +47,11 @@ def load_or_create(label: str) -> Identity:
 
 
 def ensure_seeded(label: str, ident: Identity) -> None:
-    marker = KEYS / label / ".seeded"
-    if marker.exists():
+    # Seed unless the clearinghouse already holds the history (its store
+    # is in-memory; a restart needs the demo data reloaded).
+    if request_json("GET", f"{CH}/agents/{ident.id}/score")[1].get("score") is not None:
+        (KEYS / label).mkdir(exist_ok=True)
+        (KEYS / label / ".seeded").write_text("demo data seeded\n")
         return
     counts = json.loads(FIXTURE.read_text())["agents"][label]
     receipts, i = [], 0
@@ -65,6 +69,19 @@ def ensure_seeded(label: str, ident: Identity) -> None:
     marker.parent.mkdir(exist_ok=True)
     marker.write_text("demo data seeded\n")
     print(f"seeded {label} (DEMO DATA)")
+
+
+def ensure_passport(ident: Identity) -> None:
+    """Combined tier: agents also hold AI Passports (passport alone
+    would not suffice anywhere)."""
+    try:
+        _, passport, _ = request_json("POST", f"{ISSUER}/issue", {"agent_id": ident.id})
+        _, body, _ = request_json("POST", f"{CH}/agents/{ident.id}/passport",
+                                  {"passport": passport})
+        print(f"passport {ident.id}: {body.get('passport_status')}")
+    except Exception as e:
+        print(f"passport unavailable ({e}); EyD Required LLC will refuse — "
+              "start passport-demo/issuer.py")
 
 
 def run_agent(label: str, url: str, task: str, ident: Identity | None) -> str:
@@ -119,6 +136,7 @@ def main() -> int:
         idents[label] = ident
         score = request_json("GET", f"{CH}/agents/{ident.id}/score")[1].get("score")
         print(f"agent {label} {ident.id} seeded score={score}")
+        ensure_passport(ident)
 
     rows = []
     for label in ("A", "B", "C"):
