@@ -300,4 +300,5 @@ async def act(request: Request):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("CONSOLE_PORT", "8080")))
+    uvicorn.run(app, host=os.environ.get("HOST", "127.0.0.1"),
+                port=int(os.environ.get("CONSOLE_PORT", "8080")))

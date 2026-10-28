@@ -58,6 +58,18 @@ CONSOLE_PORT=8080 python console/server.py &                       # judge conso
 # open http://127.0.0.1:8080 and drive the demo
 ```
 
+## Deploy (droplet)
+
+One command starts the whole stack; only the judge console binds
+publicly (`:8080`) — the issuer, clearinghouse, and site stay on
+localhost and the console reaches them server-side:
+
+```bash
+pip install -e ".[clearinghouse]"
+export ANTHROPIC_BASE_URL=... ANTHROPIC_AUTH_TOKEN=...   # for the console's model calls
+scripts/start-all.sh        # scripts/stop-all.sh to stop
+```
+
 ## What we didn't build (third-party / hosted)
 
 - The Meta models and any agent framework built on them (the SDK hooks

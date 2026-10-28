@@ -184,5 +184,5 @@ def make_app(issuer_url: str = ISSUER_URL) -> FastAPI:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(make_app(), host="127.0.0.1",
+    uvicorn.run(make_app(), host=os.environ.get("HOST", "127.0.0.1"),
                 port=int(os.environ.get("ISSUER_PORT", "8010")))

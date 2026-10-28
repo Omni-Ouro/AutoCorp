@@ -210,4 +210,4 @@ if __name__ == "__main__":
     app = make_app(clearinghouse_url=os.environ.get("CLEARINGHOUSE_URL", "http://127.0.0.1:8787"),
                    domain=os.environ.get("SITE_DOMAIN", "localhost"),
                    callback_url=f"http://localhost:{port}")
-    uvicorn.run(app, host="127.0.0.1", port=port)
+    uvicorn.run(app, host=os.environ.get("HOST", "127.0.0.1"), port=port)
