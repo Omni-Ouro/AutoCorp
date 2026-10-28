@@ -10,12 +10,14 @@ Run: ISSUER_URL=http://localhost:8010 python passport-demo/issuer.py
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
 import os
 import re
 import sys
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -120,8 +122,32 @@ def make_app(issuer_url: str = ISSUER_URL) -> FastAPI:
             return JSONResponse({"error": "unknown subject"}, status_code=404)
         state["revoked"] = bool(payload.get("revoked", True))
         state["state_version"] += 1
+        # Off the event loop: the clearinghouse re-checks /revocation
+        # while this notify is in flight; blocking here would deadlock
+        # the push until timeouts. Revocation has taken effect (sessions
+        # dropped) by the time this returns.
+        await asyncio.to_thread(_notify_clearinghouse, subject, state)
         return {"subject": subject, "revoked": state["revoked"],
                 "state_version": state["state_version"]}
+
+    def _notify_clearinghouse(subject: str, state: dict) -> None:
+        """Signed push: revocation changed, kill live sessions now."""
+        notice = {"subject": subject, "agent_id": state["agent_id"],
+                  "revoked": state["revoked"], "state_version": state["state_version"],
+                  "ts": utc(datetime.now(timezone.utc))}
+        der = priv.sign(canonical_bytes(notice), ec.ECDSA(hashes.SHA256()))
+        r, s = utils.decode_dss_signature(der)
+        notice["sig"] = b64u(r.to_bytes(32, "big") + s.to_bytes(32, "big"))
+        ch_url = os.environ.get("CLEARINGHOUSE_URL", "http://127.0.0.1:8787")
+        try:
+            req = urllib.request.Request(
+                ch_url + "/passport/revocations", data=json.dumps(notice).encode(),
+                method="POST", headers={"Content-Type": "application/json"})
+            # Wait for the clearinghouse to finish pushing to the sites:
+            # revocation takes effect when this returns, not at expiry.
+            urllib.request.urlopen(req, timeout=15).read()
+        except Exception:
+            pass  # push is best-effort; session expiry is the fallback
 
     @app.get("/revocation")
     def revocation(request: Request):

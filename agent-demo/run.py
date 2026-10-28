@@ -135,14 +135,19 @@ def main() -> int:
     request_json("POST", "http://localhost:8002/tamper", {"on": False})
     rows.append(["C (tamper)", "EyD Required LLC", result.status, result.body[:60],
                  latest_receipt("C", reporter)])
-    # Revoked Passport run: EyD still valid, Passport revoked -> refused.
+    # Revoked Passport run, same EyD instance (warm session): the push
+    # notice kills the session, so the very next call is refused.
     try:
-        request_json("POST", f"{ISSUER}/revoke", {"agent_id": idents["C"].id, "revoked": True})
         tools, _ = eyd_tool("http://localhost:8002/quote", "C", idents["C"])
+        tools["submit_quote_request"](need=NEED)  # Expected; session warm
+        # /revoke returns only after the push has dropped the sessions.
+        request_json("POST", f"{ISSUER}/revoke", {"agent_id": idents["C"].id, "revoked": True},
+                     timeout=30)
         result = tools["submit_quote_request"](need=NEED)
         rows.append(["C (revoked)", "EyD Required LLC", result.status, result.body[:60],
                      latest_receipt("C", reporter)])
-        request_json("POST", f"{ISSUER}/revoke", {"agent_id": idents["C"].id, "revoked": False})
+        request_json("POST", f"{ISSUER}/revoke", {"agent_id": idents["C"].id, "revoked": False},
+                     timeout=30)
     except Exception as e:
         print(f"revoked-passport run skipped: {e}")
 

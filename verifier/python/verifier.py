@@ -94,12 +94,14 @@ class EyDSite:
     """Stateful site helper behind `require_eyd` in the demo sites."""
 
     def __init__(self, identity: Identity, *, clearinghouse_url: str, domain: str,
-                 min_score: float | None = None, require_passport: bool = False):
+                 min_score: float | None = None, require_passport: bool = False,
+                 callback_url: str | None = None):
         self.identity = identity
         self.clearinghouse_url = clearinghouse_url.rstrip("/")
         self.domain = domain
         self.min_score = min_score
         self.require_passport = require_passport
+        self.callback_url = callback_url
         self.pubkey_cache: dict[str, str] = {}
         self.sessions: dict[str, tuple[str, float]] = {}
         self.nonces: dict[str, float] = {}
@@ -111,6 +113,8 @@ class EyDSite:
     def enroll(self) -> None:
         payload = {"kind": "site", "site_id": self.identity.id,
                    "pubkey": self.identity.pubkey_b64, "domain": self.domain, "ts": utc_now()}
+        if self.callback_url:
+            payload["callback_url"] = self.callback_url  # revocation push notices
         payload["sig"] = self.identity.sign(record_hash(payload).encode())
         _request_json("POST", f"{self.clearinghouse_url}/enroll", payload)
 
@@ -158,6 +162,14 @@ class EyDSite:
         if not entry or entry[1] < time.time():
             return None
         return entry[0]
+
+    def drop_sessions(self, agent_id: str) -> int:
+        """Kill an agent's live sessions (revocation push notice). The
+        next request re-attests and is checked afresh."""
+        doomed = [t for t, (a, _) in self.sessions.items() if a == agent_id]
+        for t in doomed:
+            del self.sessions[t]
+        return len(doomed)
 
     def score_allows(self, agent_id: str) -> bool:
         if self.min_score is None:

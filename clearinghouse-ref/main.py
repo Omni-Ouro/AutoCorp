@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fastapi import FastAPI, HTTPException  # noqa: E402
 
 from classify import classify, compute_score  # noqa: E402
-from passport import check_passport_live  # noqa: E402
+from passport import check_passport_live, verify_notice  # noqa: E402
 from eyd.canonical import hash_obj, record_hash  # noqa: E402
 from eyd.identity import Identity, derive_id, verify_b64  # noqa: E402
 from eyd.records import utc_now  # noqa: E402
@@ -191,6 +191,8 @@ def enroll(payload: dict):
     entry = {"pubkey": pub, "enrolled_at": payload.get("ts") or utc_now()}
     if payload.get("domain"):
         entry["domain"] = payload["domain"]
+    if payload.get("callback_url"):
+        entry["callback_url"] = payload["callback_url"]  # revocation push target
     if kind == "agent":
         entry["forked"] = existing.get("forked", False) if existing else False
     registry[pid] = entry
@@ -337,6 +339,41 @@ def present_passport(agent_id: str, payload: dict):
     return {"agent_id": agent_id, "outcome": outcome, "step": step,
             "passport_status": _passport_status(outcome, step),
             "subject": passport.get("subject")}
+
+
+@app.post("/passport/revocations")
+def passport_revocation_notice(payload: dict):
+    """Issuer push: a Passport's revocation state changed. Verified
+    against the issuer's JWKS, then pushed to every enrolled site so
+    live sessions die immediately instead of at expiry."""
+    anchors = passport_anchors()
+    if anchors is None:
+        raise HTTPException(503, "no Passport issuer configured")
+    anchor = anchors.get(PASSPORT_ISSUER, {})
+    if not verify_notice(payload, anchor.get("jwks") or {}):
+        raise HTTPException(400, "bad issuer signature")
+    subject = payload.get("subject")
+    agent_id = next((aid for aid, e in passports.items() if e.get("subject") == subject), None)
+    if agent_id is None:
+        raise HTTPException(404, "unknown passport subject")
+    presenter = {"authority": PASSPORT_AUTHORITY, "identifier": agent_id}
+    outcome, step = check_passport_live(
+        passports[agent_id]["passport"], anchors, presenter=presenter,
+        http_get=_http_get, fetch_passport=_fetch_passport, now=utc_now())
+    passports[agent_id].update({"outcome": outcome, "step": step})
+    status = _passport_status(outcome, step)
+    notified = 0
+    for site in sites.values():
+        url = site.get("callback_url")
+        if not url:
+            continue
+        try:
+            request_json("POST", url + "/revocation-notice",
+                         {"agent_id": agent_id, "passport_status": status})
+            notified += 1
+        except Exception:
+            pass  # a missed notice falls back to session expiry
+    return {"agent_id": agent_id, "passport_status": status, "sites_notified": notified}
 
 
 @app.get("/agents/{agent_id}/standing")

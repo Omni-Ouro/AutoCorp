@@ -32,12 +32,13 @@ MODES = {
 
 
 def make_app(mode: str, *, clearinghouse_url: str = "http://127.0.0.1:8787",
-             identity: Identity | None = None, domain: str = "localhost") -> FastAPI:
+             identity: Identity | None = None, domain: str = "localhost",
+             callback_url: str | None = None) -> FastAPI:
     cfg = MODES[mode]
     site_identity = identity or Identity.generate(kind="site")
     site = EyDSite(site_identity, clearinghouse_url=clearinghouse_url,
                    domain=domain, min_score=cfg["min_score"] if cfg["gated"] else None,
-                   require_passport=bool(cfg.get("passport")))
+                   require_passport=bool(cfg.get("passport")), callback_url=callback_url)
     site.enroll()
     app = FastAPI(title=cfg["company"])
     app.state.site = site
@@ -53,6 +54,16 @@ def make_app(mode: str, *, clearinghouse_url: str = "http://127.0.0.1:8787",
         payload = await request.json()
         site.tamper = bool(payload.get("on"))
         return {"tamper": site.tamper}
+
+    @app.post("/revocation-notice")
+    async def revocation_notice(request: Request):
+        """Push from the clearinghouse: an agent's Passport standing
+        changed. Drop its sessions now, not at expiry."""
+        payload = await request.json()
+        dropped = site.drop_sessions(payload.get("agent_id", ""))
+        app.state.actions.append({"agent": payload.get("agent_id"),
+                                  "result": f"revocation notice: {dropped} session(s) dropped"})
+        return {"dropped_sessions": dropped}
 
     @app.get("/dashboard")
     def dashboard():
@@ -152,6 +163,8 @@ if __name__ == "__main__":
     import uvicorn
 
     mode = os.environ.get("SITE_MODE", "required")
+    port = int(os.environ.get("SITE_PORT", "8002"))
     app = make_app(mode, clearinghouse_url=os.environ.get("CLEARINGHOUSE_URL", "http://127.0.0.1:8787"),
-                   domain=os.environ.get("SITE_DOMAIN", "localhost"))
-    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("SITE_PORT", "8002")))
+                   domain=os.environ.get("SITE_DOMAIN", "localhost"),
+                   callback_url=f"http://localhost:{port}")
+    uvicorn.run(app, host="127.0.0.1", port=port)

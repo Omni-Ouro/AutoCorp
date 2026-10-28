@@ -421,6 +421,18 @@ def verify_passport(inp: dict, jwks: dict | None = None, issuer: str | None = No
     return {"proceed": "accept", "deny": "deny", "refetch": "refetch"}[got], "revocation"
 
 
+def verify_notice(payload: dict, jwks: dict) -> bool:
+    """Verify an issuer-signed revocation notice: ES256 over the RFC 8785
+    canonical form of the payload without `sig`, under any anchor key."""
+    try:
+        sig = b64u_dec(payload.get("sig", ""))
+    except (TypeError, ValueError):
+        return False
+    unsigned = {k: v for k, v in payload.items() if k != "sig"}
+    msg = canonical_bytes(unsigned)
+    return any(_es256_verify(k, msg, sig) for k in jwks.get("keys", []))
+
+
 def check_passport_live(passport: dict, anchors: dict, *, presenter=None,
                         http_get: Callable, fetch_passport: Callable | None = None,
                         now: str, refetched: bool = False):
