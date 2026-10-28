@@ -5,8 +5,12 @@ between an EyD runtime, counterparty sites, and a clearinghouse.
 Hashes of what was sent and received, plus who it was sent to — never
 inputs, outputs, or tool arguments.
 
-Canonicalization (§4.5): sorted keys, no whitespace, UTF-8
-(`json.dumps(obj, sort_keys=True, separators=(",",":"), ensure_ascii=False)`).
+Canonicalization (§4.5): RFC 8785 (JSON Canonicalization Scheme) —
+keys sorted by UTF-16 code unit, no whitespace, minimal string
+escaping, ECMAScript number serialization, UTF-8. The wider Eyro
+stack standardizes on RFC 8785, so EyD records hash identically
+across implementations (`eyd/canonical.py`, vectors in
+`tests/test_canonical.py`).
 
 Encodings: hashes are `sha256:<hex>`; signatures are `ed25519:<base64>`
 over the UTF-8 bytes of the corresponding `sha256:<hex>` hash string;
