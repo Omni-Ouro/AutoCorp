@@ -72,6 +72,7 @@
   <section>
     <h2>Selected agent</h2>
     <dl class="kv" id="detail"></dl>
+    <div id="passport-ctl" style="margin-bottom:12px"></div>
     <h2>Give the agent a task</h2>
     <div class="actions" id="actions"></div>
   </section>
@@ -151,6 +152,20 @@ function renderDetail() {
       `Expected ${a.expected} · Unexpected ${a.unexpected} · Declined ${a.declined} · Unverified ${a.unverified}`}</dd>
     <dt>passport</dt><dd>${p ? `issuer ${esc(p.issuer || "—")} · subject ${short(p.subject)} · ${esc(p.status)}` : "—"}</dd>
     <dt>last seen</dt><dd>${a.last_seen || "—"}</dd>`;
+  const ctl = $("#passport-ctl");
+  if (!a.agent_id) {
+    ctl.innerHTML = `<span class="switch">AI Passport: unavailable — no identity to bind to.</span>`;
+  } else if (!p) {
+    ctl.innerHTML = `<button id="pp-attach">Attach AI Passport</button>
+      <span class="switch">none attached</span><div class="msg" id="pp-msg"></div>`;
+    $("#pp-attach").onclick = () => passportOp("attach");
+  } else {
+    ctl.innerHTML = `<span class="switch">AI Passport: <b>${esc(p.status)}</b></span>
+      <button id="pp-revoke">${p.status === "revoked" ? "Reinstate" : "Revoke"}</button>
+      <button id="pp-detach">Detach</button><div class="msg" id="pp-msg"></div>`;
+    $("#pp-revoke").onclick = () => passportOp(p.status === "revoked" ? "reinstate" : "revoke");
+    $("#pp-detach").onclick = () => passportOp("detach");
+  }
   const names = {search: "Search pricing", quote: "Get a quote — 200 units", pay: "Pay invoice 2142"};
   $("#actions").innerHTML = Object.keys(names).map(act => `
     <button class="act" data-act="${act}" ${busy ? "disabled" : ""}>
@@ -209,6 +224,12 @@ async function act(action) {
       <span class="mono">${short(rec.record_hash)}</span> <span style="color:var(--mut)">pending → awaiting counterparty → classified</span>`
       : `<span style="color:var(--mut)">none — ${esc(r.note || "no receipt issued")}</span>`}</p>`;
   await refresh();
+}
+
+async function passportOp(op) {
+  const r = await api("/api/passport", {agent: selected, op});
+  await refresh();
+  const m = $("#pp-msg"); if (m) m.textContent = r.message || "";
 }
 
 async function refresh() {

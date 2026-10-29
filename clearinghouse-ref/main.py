@@ -368,6 +368,13 @@ def present_passport(agent_id: str, payload: dict):
             "subject": passport.get("subject")}
 
 
+@app.delete("/agents/{agent_id}/passport")
+def remove_passport(agent_id: str):
+    """Detach: the clearinghouse forgets the agent's Passport."""
+    passports.pop(agent_id, None)
+    return {"agent_id": agent_id, "passport_status": "missing"}
+
+
 @app.post("/passport/revocations")
 def passport_revocation_notice(payload: dict):
     """Issuer push: a Passport's revocation state changed. Verified

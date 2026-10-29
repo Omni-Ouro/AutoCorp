@@ -11,10 +11,15 @@ the agent — one model call per click; `agent.py` also runs standalone.
 | A | none (bare) | none |
 | B | EyD, key B | mixed, score ≈ 0.4 |
 | C | EyD + AI Passport, key C | long clean run, score ≈ 0.97 |
+| D | Passport only (no EyD tools) | score ≈ 0.97 — never presented |
+| E | EyD, key E | none — score unknown |
 
-C holds a real AI Passport from the demo issuer (`passport-demo/issuer.py`),
-registered at the clearinghouse and checked when presented; a revoked
-Passport is refused, and the revocation push drops C's live sessions
+Agents are console config, not code: EyD on/off, a seed profile, and a
+Passport flag. From the console, a Passport can be attached to, revoked
+on, or detached from any identified agent at runtime (A has no identity
+to bind one to). C's Passport is a real one from the demo issuer
+(`passport-demo/issuer.py`), registered at the clearinghouse and checked
+when presented; revoking it pushes a notice that drops live sessions
 immediately.
 
 Validated live 2026-10-28 through the judge console: A pays → refused

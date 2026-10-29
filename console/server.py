@@ -38,11 +38,24 @@ KEYS = ROOT / "agent-demo" / ".keys"
 FIXTURE = ROOT / "fixtures" / "history.json"
 DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
+# Plug-and-play setups: an agent is just flags. EyD on/off decides
+# whether its tools carry @eyd.tool; `seed` names a fixtures profile
+# (None = no history, score unknown); `passport` attaches an AI Passport
+# at startup. Passports can be attached, revoked, or detached from the
+# console at runtime for any agent with an identity.
 AGENTS = {
-    "A": {"name": "Agent A", "chip": "no EyD", "eyd": False},
-    "B": {"name": "Agent B", "chip": "EyD", "eyd": True},
-    "C": {"name": "Agent C", "chip": "EyD + Passport", "eyd": True, "passport": True},
+    "A": {"name": "Agent A", "eyd": False,
+          "bare_note": "Agent A has no EyD identity: nothing was signed or "
+                       "reported, so no receipt exists for this action."},
+    "B": {"name": "Agent B", "eyd": True, "seed": "B"},
+    "C": {"name": "Agent C", "eyd": True, "seed": "C", "passport": True},
+    "D": {"name": "Agent D", "eyd": False, "seed": "C", "passport": True,
+          "bare_note": "Agent D's tools carry no EyD, so the site never saw "
+                       "an identity to check its Passport against. A Passport "
+                       "alone opens nothing."},
+    "E": {"name": "Agent E", "eyd": True},
 }
+PASSPORT_ATTACHED: set[str] = set()
 
 ACTIONS = {
     "search": {
@@ -112,46 +125,58 @@ def load_or_create(label: str) -> Identity:
     return ident
 
 
-def seed_history(label: str, ident: Identity) -> None:
+def seed_history(profile: str, ident: Identity) -> None:
     import hashlib as _hl
 
     from eyd.records import utc_now
 
-    counts = json.loads(FIXTURE.read_text())["agents"][label]
+    counts = json.loads(FIXTURE.read_text())["agents"][profile]
     receipts, i = [], 0
     for classification, n in (("Expected", counts["expected"]),
                               ("Unexpected", counts["unexpected"]),
                               ("Declined", counts["declined"])):
         for _ in range(n):
             receipts.append({
-                "record_hash": "sha256:" + _hl.sha256(f"seed-{label}-{i}".encode()).hexdigest(),
+                "record_hash": "sha256:" + _hl.sha256(f"seed-{ident.id}-{i}".encode()).hexdigest(),
                 "agent_id": ident.id, "site_id": "SEEDED-DEMO-SITE",
                 "classification": classification, "target": "seeded.demo",
                 "ts": utc_now(), "ch_sig": "ed25519:demo"})
             i += 1
     request_json("POST", f"{CH}/seed", {"receipts": receipts})
-    print(f"console: seeded {label} (DEMO DATA)")
+    print(f"console: seeded {ident.id[:8]} profile {profile} (DEMO DATA)")
+
+
+def attach_passport(key: str, ident: Identity) -> bool:
+    """Issue a Passport from the demo issuer and register it at the
+    clearinghouse, bound to this agent's EyD identity."""
+    try:
+        _, passport, _ = request_json("POST", f"{ISSUER}/issue", {"agent_id": ident.id})
+        _, body, _ = request_json("POST", f"{CH}/agents/{ident.id}/passport",
+                                  {"passport": passport})
+    except Exception as e:
+        print(f"console: passport attach failed for {key} ({e})")
+        return False
+    PASSPORT_ATTACHED.add(key)
+    print(f"console: agent {key} passport {body.get('passport_status')}")
+    return True
 
 
 def setup_agents() -> dict[str, Identity]:
-    """Enroll B/C, seed history if the clearinghouse has none, and
-    register C's AI Passport (the real demo issuer, not a mock)."""
+    """Create/enroll every identified agent, seed its history profile if
+    the clearinghouse has none, attach its Passport if configured."""
     reporter = Reporter(CH)
     idents: dict[str, Identity] = {}
-    for label in ("B", "C"):
-        ident = load_or_create(label)
+    for key, meta in AGENTS.items():
+        if not (meta["eyd"] or meta.get("passport")):
+            continue  # A: no key, no enrollment — the true baseline
+        ident = load_or_create(key)
         reporter.enroll(ident)
-        idents[label] = ident
-        if request_json("GET", f"{CH}/agents/{ident.id}/score")[1].get("score") is None:
-            seed_history(label, ident)
-    try:
-        _, passport, _ = request_json("POST", f"{ISSUER}/issue",
-                                      {"agent_id": idents["C"].id})
-        _, body, _ = request_json("POST", f"{CH}/agents/{idents['C'].id}/passport",
-                                  {"passport": passport})
-        print(f"console: agent C passport {body.get('passport_status')}")
-    except Exception as e:
-        print(f"console: passport issuer unavailable ({e}); C runs on EyD alone")
+        idents[key] = ident
+        if meta.get("seed") and \
+                request_json("GET", f"{CH}/agents/{ident.id}/score")[1].get("score") is None:
+            seed_history(meta["seed"], ident)
+        if meta.get("passport"):
+            attach_passport(key, ident)
     return idents
 
 
@@ -179,12 +204,16 @@ def agents():
             card.update({k: score.get(k) for k in
                          ("score", "expected", "unexpected", "declined",
                           "unverified", "total", "first_seen", "last_seen")})
-            if meta.get("passport"):
+            if key in PASSPORT_ATTACHED:
                 _, standing, _ = request_json("GET", f"{CH}/agents/{ident.id}/standing")
-                card["passport_detail"] = {
-                    "issuer": standing.get("passport_issuer"),
-                    "subject": standing.get("passport_subject"),
-                    "status": standing.get("passport_status")}
+                if standing.get("passport_status") not in (None, "missing"):
+                    card["passport_detail"] = {
+                        "issuer": standing.get("passport_issuer"),
+                        "subject": standing.get("passport_subject"),
+                        "status": standing.get("passport_status")}
+        has_passport = card["passport_detail"] is not None
+        card["chip"] = ("EyD + Passport" if has_passport else "EyD") if meta["eyd"] \
+            else ("Passport only" if has_passport else "no EyD")
         out.append(card)
     return {"agents": out, "site_url": SITE, "clearinghouse_url": CH}
 
@@ -205,6 +234,40 @@ async def boost(request: Request):
                             status_code=502)
     return {"ok": True, "score": body.get("score"), "added": body.get("added"),
             "message": f"Demo boost applied (+{body.get('added')} demo receipts)."}
+
+
+@app.post("/api/passport")
+async def passport_op(request: Request):
+    """Attach / detach / revoke / reinstate an agent's AI Passport.
+    Attach issues a fresh one from the demo issuer; revoke pushes a
+    signed notice through the clearinghouse so live sessions drop."""
+    payload = await request.json()
+    key, op = payload.get("agent"), payload.get("op")
+    ident = IDENTS.get(key)
+    if ident is None:
+        return {"ok": False,
+                "message": "Agent A has no identity — there is no agent_id for a "
+                           "Passport to bind to. That is the point of Agent A."}
+    if op == "attach":
+        ok = attach_passport(key, ident)
+        message = "Passport issued and registered." if ok else "Issuer unavailable."
+    elif op == "detach":
+        request_json("DELETE", f"{CH}/agents/{ident.id}/passport")
+        PASSPORT_ATTACHED.discard(key)
+        ok, message = True, "Passport detached; the clearinghouse forgot it."
+    elif op in ("revoke", "reinstate"):
+        status, _, _ = request_json("POST", f"{ISSUER}/revoke",
+                                    {"agent_id": ident.id, "revoked": op == "revoke"},
+                                    timeout=30)
+        ok = status == 200
+        message = ("Revoked — the issuer pushed the notice and live sessions "
+                   "were dropped." if op == "revoke" else "Passport reinstated.") \
+            if ok else "Issuer unavailable."
+    else:
+        return JSONResponse({"error": "unknown op"}, status_code=400)
+    _, standing, _ = request_json("GET", f"{CH}/agents/{ident.id}/standing")
+    return {"ok": ok, "message": message,
+            "passport_status": standing.get("passport_status")}
 
 
 @app.get("/api/gates")
@@ -255,8 +318,10 @@ async def act(request: Request):
         return JSONResponse({"error": "unknown agent or action"}, status_code=400)
     spec = ACTIONS[action]
     fn = _tool_fn(action)
-    ident = IDENTS.get(key)
-    if ident is not None:  # fresh tool table per click: gates always re-checked
+    # Fresh tool table per click: gates always re-checked. Whether the
+    # tools carry EyD is the agent's setup flag, nothing else.
+    decorated = key in IDENTS and AGENTS[key]["eyd"]
+    if decorated:
         eyd = EyD.load(KEYS / f"{key}.json", clearinghouse=CH,
                        chain_path=KEYS / key / "chain.jsonl")
         fn = eyd.tool(verb=spec["verb"], target="localhost")(fn)
@@ -287,9 +352,8 @@ async def act(request: Request):
         out["response_body"] = json.loads(result.body)
     except Exception:
         out["response_body"] = result.body
-    if ident is None:
-        out["note"] = ("Agent A has no EyD identity: nothing was signed or "
-                       "reported, so no receipt exists for this action.")
+    if not decorated:
+        out["note"] = AGENTS[key].get("bare_note")
     else:
         out["receipt"] = _receipt_for(key)
         if out["receipt"] is None:
