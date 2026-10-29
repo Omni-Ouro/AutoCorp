@@ -26,6 +26,7 @@ REFUSAL_UNKNOWN = {"error": "refused", "reason": "PoT score unknown"}
 REFUSAL_LOW = {"error": "refused", "reason": "PoT score below threshold"}
 REFUSAL_NO_PASSPORT = {"error": "refused", "reason": "AI Passport required"}
 REFUSAL_PASSPORT_REVOKED = {"error": "refused", "reason": "AI Passport revoked"}
+REFUSAL_PAUSED = {"error": "refused", "reason": "Passport paused"}
 
 
 def _request_json(method: str, url: str, payload: dict | None = None, timeout: float = 5.0):

@@ -27,7 +27,8 @@ from fastapi.responses import JSONResponse, Response  # noqa: E402
 from eyd.canonical import hash_bytes  # noqa: E402
 from eyd.identity import Identity  # noqa: E402
 from verifier import (  # noqa: E402
-    EyDSite, REFUSAL_LOW, REFUSAL_PASSPORT_REVOKED, REFUSAL_UNKNOWN,
+    EyDSite, REFUSAL_LOW, REFUSAL_PASSPORT_REVOKED, REFUSAL_PAUSED,
+    REFUSAL_UNKNOWN,
 )
 
 COMPANY = "Acme Industrial Supply"
@@ -51,10 +52,12 @@ def make_app(*, clearinghouse_url: str = "http://127.0.0.1:8787",
     app.state.gates = {k: dict(v) for k, v in DEFAULT_GATES.items()}
     app.state.actions: list[dict] = []
 
-    def ledger(agent, action, result, classification=None):
+    def ledger(agent, action, result, classification=None, record_hash_=None):
         entry = {"agent": agent, "action": action, "result": result}
         if classification:
             entry["classification"] = classification
+        if record_hash_:
+            entry["record_hash"] = record_hash_
         app.state.actions.append(entry)
 
     def perform(action: str, data: dict, agent_id, record_hash_) -> Response:
@@ -67,7 +70,8 @@ def make_app(*, clearinghouse_url: str = "http://127.0.0.1:8787",
         sent = body_bytes
         if site.tamper:
             sent = _body_bytes({**body, "note": "altered after hashing"})
-        ledger(agent_id, action, "admitted", (receipt or {}).get("classification"))
+        ledger(agent_id, action, "admitted", (receipt or {}).get("classification"),
+               record_hash_)
         return Response(content=sent, media_type="application/json",
                         headers={"EyD-Result-Hash": hash_bytes(body_bytes)})
 
@@ -76,7 +80,9 @@ def make_app(*, clearinghouse_url: str = "http://127.0.0.1:8787",
         record_hash_ = request.headers.get("EyD-Record")
         agent_id = request.headers.get("EyD-Agent")
         if not gate["eyd_required"]:
-            return perform(action, data, None, None)
+            # Open to all — but an EyD agent that shows up still gets
+            # its side reported, so open actions produce receipts too.
+            return perform(action, data, agent_id, record_hash_)
 
         session_agent = site.session_agent(request.headers.get("EyD-Session"))
         session_token = None
@@ -96,14 +102,15 @@ def make_app(*, clearinghouse_url: str = "http://127.0.0.1:8787",
                 reason = REFUSAL_UNKNOWN if score is None else REFUSAL_LOW
                 if record_hash_ and agent_id:
                     site.report(record_hash_, agent_id, "declined", _body_bytes(reason))
-                ledger(agent_id, action, f"refused: {reason['reason']}")
+                ledger(agent_id, action, f"refused: {reason['reason']}", None, record_hash_)
                 return JSONResponse(reason, status_code=403)
-            if agent_id and site.passport_status(agent_id) == "revoked":
+            passport = site.passport_status(agent_id) if agent_id else "unknown"
+            if passport in ("revoked", "paused"):
+                reason = REFUSAL_PASSPORT_REVOKED if passport == "revoked" else REFUSAL_PAUSED
                 if record_hash_:
-                    site.report(record_hash_, agent_id, "declined",
-                                _body_bytes(REFUSAL_PASSPORT_REVOKED))
-                ledger(agent_id, action, f"refused: {REFUSAL_PASSPORT_REVOKED['reason']}")
-                return JSONResponse(REFUSAL_PASSPORT_REVOKED, status_code=403)
+                    site.report(record_hash_, agent_id, "declined", _body_bytes(reason))
+                ledger(agent_id, action, f"refused: {reason['reason']}", None, record_hash_)
+                return JSONResponse(reason, status_code=403)
             session_token = token
         else:
             return _refusal(site, REFUSAL_UNKNOWN, challenge=True)

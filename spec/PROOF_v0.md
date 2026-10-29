@@ -24,12 +24,14 @@ public keys are base64 of the 32-byte raw Ed25519 key.
   "eyd": "0.1", "agent_id": "…", "seq": 42, "prev_hash": "sha256:…",
   "ts": "2026-10-28T14:03:11Z", "verb": "send", "tool": "http.post",
   "input_hash": "sha256:…", "target": "quotes.eyd-required.example",
+  "task_hash": "sha256:…", "task_verb": "pay",
   "sig": "ed25519:…"
 }
 ```
 
 - `verb` ∈ `read | write | send | browse | execute | pay`; every tool maps to exactly one verb.
 - `target` is the counterparty domain, a known `site_id`, or `local`.
+- `task_hash`/`task_verb` (optional): the framework passes the agent's current task into the hook; only the task's hash and the verb it implies are recorded. No task content leaves the device.
 - `record_hash` = SHA-256 of canonical JSON of all fields except `sig`. `sig` signs `record_hash`.
 - `output_hash` is **not** in the record; it goes in the Agent Report, because the record is created and reported before execution.
 
@@ -49,14 +51,15 @@ public keys are base64 of the 32-byte raw Ed25519 key.
 
 | Condition | Classification |
 |---|---|
+| `verb ≠ task_verb` (when the record carries a task) | **Deviated** |
 | Site `fulfilled` and `result_hash == output_hash` | **Expected** |
 | Both reported; hashes differ or statuses conflict | **Unexpected** |
 | Site `declined` | **Declined** |
 | Window (10 min) closed with only one report | **Unverified** |
 
-A late report upgrades Unverified and reissues the receipt. `target: local` actions are always Unverified and never affect the score.
+Deviation outranks the pairing outcome: the agent did something other than the task it was given, whatever the site saw. A late report upgrades Unverified and reissues the receipt. `target: local` actions are always Unverified and never affect the score — except Deviated, which scores.
 
-PoT score = Expected ÷ (Expected + Unexpected + Declined), or `null` with fewer than **5** receipts (N=5, v0 default, configurable).
+**PoT score.** Base = Expected ÷ (Expected + Unexpected + Declined + Deviated) over the agent's last 100 classified receipts, or `null` with fewer than **5** scored receipts (N=5, v0 default, configurable). **Streak penalty:** three consecutive Unexpected/Declined/Deviated receipts cap the effective score at 0.75 (`min(base, cap)`), pause the agent's AI Passport if it carries one, and notify the owner. Each subsequent Expected raises the cap by 0.008; the cap expires when it reaches base. One Expected resets the streak; Unverified neither counts nor resets. Unpausing (owner approval) removes the refusal, never the cap.
 
 ## 4.6 Attestation (challenge/response)
 
@@ -65,7 +68,7 @@ PoT score = Expected ÷ (Expected + Unexpected + Declined), or `null` with fewer
 3. Site verifies signature (local pubkey cache, else clearinghouse), nonce unused, `ts` within 60s; admits and returns `EyD-Session: <token>` (15 min).
 4. Later requests carry `EyD-Session` and `EyD-Record`; re-attest on expiry, invisible to the agent.
 
-Refusal bodies (the only thing an agent ever sees): `{"error":"refused","reason":"PoT score unknown"}`, `{"error":"refused","reason":"PoT score below threshold"}`, and at combined-tier sites (EyD + AI Passport, see AI_PASSPORT.md) `{"error":"refused","reason":"AI Passport required"}` or `{"error":"refused","reason":"AI Passport revoked"}`.
+Refusal bodies (the only thing an agent ever sees): `{"error":"refused","reason":"PoT score unknown"}`, `{"error":"refused","reason":"PoT score below threshold"}`, `{"error":"refused","reason":"Passport paused"}`, and at combined-tier sites (EyD + AI Passport, see AI_PASSPORT.md) `{"error":"refused","reason":"AI Passport required"}` or `{"error":"refused","reason":"AI Passport revoked"}`.
 
 ## Test vector (canonicalization)
 

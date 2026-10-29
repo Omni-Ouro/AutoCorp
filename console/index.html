@@ -41,6 +41,9 @@
   .badge { display:inline-block; padding:1px 9px; border-radius:99px; color:#fff; font-size:12px; font-weight:600; }
   .b-Expected { background:var(--green); } .b-Unexpected { background:var(--amber); }
   .b-Declined { background:var(--red); } .b-Unverified { background:var(--gray); }
+  .b-Deviated { background:#7c3aed; }
+  .notify { background:#fdf3e3; border:1px solid var(--amber); color:#7c4a03;
+            border-radius:8px; padding:10px 12px; margin-bottom:12px; font-size:13px; }
   .b-pending { background:var(--blue); }
   pre { background:#0f1620; color:#d7e3f0; border-radius:8px; padding:10px; overflow:auto;
         font:12px/1.5 ui-monospace, Consolas, monospace; white-space:pre-wrap; word-break:break-word; }
@@ -97,8 +100,8 @@
 <div id="ledger-wrap">
   <section>
     <h2>Site ledger — every action, every agent</h2>
-    <table><thead><tr><th>agent</th><th>action</th><th>result</th><th>classification</th></tr></thead>
-    <tbody id="ledger"><tr><td colspan="4" style="color:var(--mut)">nothing yet</td></tr></tbody></table>
+    <table><thead><tr><th>agent</th><th>task verb</th><th>claimed verb · tool</th><th>site outcome</th><th>classification</th><th>score after</th></tr></thead>
+    <tbody id="ledger"><tr><td colspan="6" style="color:var(--mut)">nothing yet</td></tr></tbody></table>
   </section>
 </div>
 
@@ -127,14 +130,21 @@ function renderAgents() {
       <div class="scorebar"><div style="width:${a.score == null ? 0 : Math.round(a.score * 100)}%"></div></div>
       <div class="scoreline"><span>PoT score</span><span>${a.score == null ? "unknown" : a.score.toFixed(2)}</span></div>
       <button class="boost" data-boost="${a.key}">Demo PoT boost +0.1 <span style="color:var(--mut)">(demo data)</span></button>
+      <button class="boost" data-reduce="${a.key}">Demo PoT reduce −0.1 <span style="color:var(--mut)">(demo data)</span></button>
       <div class="msg" id="msg-${a.key}"></div>
     </div>`).join("");
   document.querySelectorAll("[data-agent]").forEach(el =>
-    el.onclick = e => { if (!e.target.dataset.boost) { selected = el.dataset.agent; renderAll(); } });
+    el.onclick = e => { if (!e.target.dataset.boost && !e.target.dataset.reduce) { selected = el.dataset.agent; renderAll(); } });
   document.querySelectorAll("[data-boost]").forEach(el =>
     el.onclick = async () => {
       const r = await api("/api/boost", {agent: el.dataset.boost});
       $("#msg-" + el.dataset.boost).textContent = r.message || "";
+      await refresh();
+    });
+  document.querySelectorAll("[data-reduce]").forEach(el =>
+    el.onclick = async () => {
+      const r = await api("/api/reduce", {agent: el.dataset.reduce});
+      $("#msg-" + el.dataset.reduce).textContent = r.message || "";
       await refresh();
     });
   renderDetail();
@@ -145,11 +155,12 @@ function renderDetail() {
   if (!a) return;
   const p = a.passport_detail;
   $("#detail").innerHTML = `
+    ${a.notification ? `<div class="notify"><b>Owner notification.</b> ${esc(a.notification.replace(a.agent_id || "", a.name))}</div>` : ""}
     <dt>agent_id</dt><dd>${a.agent_id || "— (no EyD identity)"}</dd>
     <dt>enrolled</dt><dd>${a.enrolled_at || "—"}</dd>
-    <dt>PoT score</dt><dd>${a.score == null ? "unknown" : a.score.toFixed(3)}</dd>
+    <dt>PoT score</dt><dd>${a.score == null ? "unknown" : a.score.toFixed(3)}${a.cap != null ? ` <span style="color:var(--mut)">(base ${a.base?.toFixed(3)}, capped at ${a.cap.toFixed(2)} — streak ${a.streak})</span>` : ""}</dd>
     <dt>receipts</dt><dd>${a.total == null ? "—" :
-      `Expected ${a.expected} · Unexpected ${a.unexpected} · Declined ${a.declined} · Unverified ${a.unverified}`}</dd>
+      `Expected ${a.expected} · Unexpected ${a.unexpected} · Declined ${a.declined} · Deviated ${a.deviated ?? 0} · Unverified ${a.unverified}`}</dd>
     <dt>passport</dt><dd>${p ? `issuer ${esc(p.issuer || "—")} · subject ${short(p.subject)} · ${esc(p.status)}` : "—"}</dd>
     <dt>last seen</dt><dd>${a.last_seen || "—"}</dd>`;
   const ctl = $("#passport-ctl");
@@ -159,6 +170,12 @@ function renderDetail() {
     ctl.innerHTML = `<button id="pp-attach">Attach AI Passport</button>
       <span class="switch">none attached</span><div class="msg" id="pp-msg"></div>`;
     $("#pp-attach").onclick = () => passportOp("attach");
+  } else if (p.status === "paused") {
+    ctl.innerHTML = `<span class="switch">AI Passport: <b>paused</b> (streak penalty)</span>
+      <button id="pp-approve">Approve Passport</button>
+      <button id="pp-detach">Detach</button><div class="msg" id="pp-msg"></div>`;
+    $("#pp-approve").onclick = () => passportOp("approve");
+    $("#pp-detach").onclick = () => passportOp("detach");
   } else {
     ctl.innerHTML = `<span class="switch">AI Passport: <b>${esc(p.status)}</b></span>
       <button id="pp-revoke">${p.status === "revoked" ? "Reinstate" : "Revoke"}</button>
@@ -201,9 +218,11 @@ function renderGates() {
 async function renderLedger() {
   const {actions} = await api("/api/ledger");
   $("#ledger").innerHTML = actions.length ? actions.slice().reverse().map(a => `
-    <tr><td class="mono">${short(a.agent)}</td><td>${esc(a.action)}</td>
-        <td>${esc(a.result)}</td><td>${badge(a.classification)}</td></tr>`).join("")
-    : `<tr><td colspan="4" style="color:var(--mut)">nothing yet</td></tr>`;
+    <tr><td class="mono">${short(a.agent)}</td><td>${esc(a.task_verb || a.action || "—")}</td>
+        <td>${esc(a.claimed || "—")}</td><td>${esc(a.site_outcome || "")}</td>
+        <td>${badge(a.classification)}</td>
+        <td>${a.score_after == null ? "—" : a.score_after.toFixed(3)}</td></tr>`).join("")
+    : `<tr><td colspan="6" style="color:var(--mut)">nothing yet</td></tr>`;
 }
 
 async function act(action) {

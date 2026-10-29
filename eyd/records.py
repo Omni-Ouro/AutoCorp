@@ -36,6 +36,8 @@ def build_action_record(
     tool_input: Any = None,
     target: str = "local",
     ts: str | None = None,
+    task_hash: str | None = None,
+    task_verb: str | None = None,
 ) -> dict:
     if verb not in VERBS:
         raise ValueError(f"verb must be one of {VERBS}, got {verb!r}")
@@ -50,6 +52,12 @@ def build_action_record(
         "input_hash": input_hash_for(tool_input),
         "target": target,
     }
+    # Deviation (§3.11): the framework passes the current task into the
+    # hook; only its hash and implied verb enter the record. No task
+    # content ever leaves the device.
+    if task_verb is not None:
+        record["task_hash"] = task_hash or hash_bytes(b"")
+        record["task_verb"] = task_verb
     rh = record_hash(record)
     record["sig"] = identity.sign(rh.encode("utf-8"))
     return record

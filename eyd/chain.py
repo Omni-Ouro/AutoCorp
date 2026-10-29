@@ -40,11 +40,13 @@ class LocalChain:
         last = records[-1]
         return int(last["seq"]), record_hash(last)
 
-    def append(self, *, verb: str, tool: str, tool_input=None, target: str = "local", ts=None) -> dict:
+    def append(self, *, verb: str, tool: str, tool_input=None, target: str = "local", ts=None,
+               task_hash: str | None = None, task_verb: str | None = None) -> dict:
         seq, prev = self.head()
         record = build_action_record(
             self.identity, seq=seq + 1, prev_hash=prev,
             verb=verb, tool=tool, tool_input=tool_input, target=target, ts=ts,
+            task_hash=task_hash, task_verb=task_verb,
         )
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, sort_keys=True) + "\n")

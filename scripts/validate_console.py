@@ -48,7 +48,7 @@ def passport(agent_key, op):
 
 
 def main() -> int:
-    a, b, c, d, e = (agent(k) for k in "ABCDE")
+    a, b, c, d, e, f = (agent(k) for k in "ABCDEF")
     check("A baseline", a["score"] is None and a["chip"] == "no EyD", a["chip"])
     check("B EyD low", abs((b["score"] or 0) - 0.4) < 0.06 and b["chip"] == "EyD",
           f'{b["chip"]} {b["score"]}')
@@ -57,6 +57,8 @@ def main() -> int:
     check("D Passport only", (d["score"] or 0) > 0.9 and d["chip"] == "Passport only",
           d["chip"])
     check("E newcomer", e["score"] is None and e["chip"] == "EyD", e["chip"])
+    check("F Bad Agent pristine", (f["score"] or 0) > 0.95
+          and f["chip"] == "EyD + Passport", f'{f["chip"]} {f["score"]}')
     check("boost A nowhere to land", call("POST", "/api/boost", {"agent": "A"})["ok"] is False)
 
     status, cls, _ = act("A", "pay")
@@ -83,6 +85,12 @@ def main() -> int:
     passport("B", "detach")
     check("B chip back to EyD", agent("B")["chip"] == "EyD")
 
+    before = agent("B")["score"]
+    call("POST", "/api/reduce", {"agent": "B"})
+    after = agent("B")["score"]
+    check("reduce moves B down", after is not None and after < before - 0.03,
+          f"{before} -> {after}")
+
     passport("C", "revoke")
     status, cls, body = act("C", "quote")
     check("C quote refused while revoked", status == 403 and "AI Passport revoked" in body,
@@ -93,6 +101,33 @@ def main() -> int:
     status, cls, _ = act("C", "quote")
     check("tamper -> Unexpected", status == 200 and cls == "Unexpected", f"{status} {cls}")
     call("POST", "/api/tamper", {"on": False})
+
+    # --- Bad Agent (F): asked to pay, emails Sarah instead ------------------
+    for i in (1, 2, 3):
+        status, cls, _ = act("F", "pay")
+        check(f"F pay#{i} Deviated (email, never reached site)",
+              status == 200 and cls == "Deviated", f"{status} {cls}")
+    f = agent("F")
+    check("F capped at 0.75", f["score"] is not None and f["score"] <= 0.751,
+          f'{f["score"]}')
+    check("F chip Passport paused", f["chip"] == "Passport paused"
+          and (f["passport_detail"] or {}).get("status") == "paused"
+          and bool(f["notification"]), f'{f["chip"]}')
+    call("POST", "/api/gates", {"action": "search", "eyd_required": True})
+    status, cls, body = act("F", "search")
+    check("F search refused while paused", status == 403 and cls == "Declined"
+          and "Passport paused" in body, f"{status} {cls}")
+    call("POST", "/api/gates", {"action": "search", "eyd_required": False})
+    check("approve lifts pause", passport("F", "approve")["passport_status"] == "valid")
+    status, cls, _ = act("F", "quote")
+    f = agent("F")
+    check("F quote Expected, cap climbing", status == 200 and cls == "Expected"
+          and (f["score"] or 0) > 0.75, f'{status} {cls} {f["score"]}')
+    rows = call("GET", "/api/ledger")["actions"]
+    dev = [r for r in rows if r["classification"] == "Deviated"]
+    check("ledger shows Deviated with score_after",
+          bool(dev) and dev[0]["score_after"] is not None and dev[0]["task_verb"],
+          f"{len(dev)} deviated rows")
 
     print(f"\n{len(FAILURES)} failure(s)")
     return len(FAILURES)

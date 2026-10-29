@@ -5,8 +5,10 @@ EXPECTED = "Expected"
 UNEXPECTED = "Unexpected"
 DECLINED = "Declined"
 UNVERIFIED = "Unverified"
+DEVIATED = "Deviated"
 
 MIN_RECEIPTS = 5  # N: score is null with fewer than this many scored receipts
+SCORED_WINDOW = 100  # base score reads the last 100 classified receipts (§3.10)
 
 
 def classify(agent_report: dict | None, site_report: dict | None) -> str:
@@ -29,11 +31,11 @@ def compute_score(classifications: list[str], min_receipts: int = MIN_RECEIPTS) 
     `classifications` should already exclude `target: local` actions,
     which never affect the score.
     """
-    counts = {EXPECTED: 0, UNEXPECTED: 0, DECLINED: 0, UNVERIFIED: 0}
+    counts = {EXPECTED: 0, UNEXPECTED: 0, DECLINED: 0, UNVERIFIED: 0, DEVIATED: 0}
     for c in classifications:
         if c in counts:
             counts[c] += 1
-    scored = counts[EXPECTED] + counts[UNEXPECTED] + counts[DECLINED]
+    scored = counts[EXPECTED] + counts[UNEXPECTED] + counts[DECLINED] + counts[DEVIATED]
     total = sum(counts.values())
     score = (counts[EXPECTED] / scored) if scored >= min_receipts and scored > 0 else None
     # With >= min scored receipts the formula applies; below it, null.
@@ -45,6 +47,7 @@ def compute_score(classifications: list[str], min_receipts: int = MIN_RECEIPTS) 
         "unexpected": counts[UNEXPECTED],
         "declined": counts[DECLINED],
         "unverified": counts[UNVERIFIED],
+        "deviated": counts[DEVIATED],
         "total": total,
         "scored": scored,
     }

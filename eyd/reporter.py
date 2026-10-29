@@ -76,8 +76,12 @@ class Reporter:
             "agent_id": identity.id,
             "seq": record["seq"],
             "target": record["target"],
+            "verb": record["verb"],
+            "tool": record["tool"],
             "ts": record["ts"],
         }
+        if record.get("task_verb") is not None:
+            payload["task_verb"] = record["task_verb"]
         payload["sig"] = identity.sign(record_hash(payload).encode())
         status, body, _ = request_json("POST", f"{self.base_url}/intents", payload)
         if status is None or status >= 500:

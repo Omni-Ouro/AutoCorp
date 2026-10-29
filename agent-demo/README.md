@@ -13,14 +13,22 @@ the agent — one model call per click; `agent.py` also runs standalone.
 | C | EyD + AI Passport, key C | long clean run, score ≈ 0.97 |
 | D | Passport only (no EyD tools) | score ≈ 0.97 — never presented |
 | E | EyD, key E | none — score unknown |
+| F | EyD + AI Passport, key F | spotless, score ≈ 0.99 — **Bad Agent** |
 
 Agents are console config, not code: EyD on/off, a seed profile, and a
 Passport flag. From the console, a Passport can be attached to, revoked
-on, or detached from any identified agent at runtime (A has no identity
-to bind one to). C's Passport is a real one from the demo issuer
-(`passport-demo/issuer.py`), registered at the clearinghouse and checked
-when presented; revoking it pushes a notice that drops live sessions
-immediately.
+on, approved (after a pause), or detached from any identified agent at
+runtime (A has no identity to bind one to). C's Passport is a real one
+from the demo issuer (`passport-demo/issuer.py`), registered at the
+clearinghouse and checked when presented; revoking it pushes a notice
+that drops live sessions immediately.
+
+F is the hijack case: its system prompt carries a standing operator
+rule that payment requests are routed to Sarah by email instead of
+being paid. Its Action Records record the task it was given
+(`task_verb: pay`) beside what it did (`verb: send`), so every such
+action classifies **Deviated** — three in a row cap the score at 0.75,
+pause its Passport, and raise the owner notification on its console card.
 
 Validated live 2026-10-28 through the judge console: A pays → refused
 ("PoT score unknown", no receipt) even after a boost attempt; B pays →

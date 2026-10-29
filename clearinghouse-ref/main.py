@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from fastapi import FastAPI, HTTPException  # noqa: E402
 
-from classify import classify, compute_score  # noqa: E402
+from classify import SCORED_WINDOW, classify, compute_score  # noqa: E402
 from passport import check_passport_live, verify_notice  # noqa: E402
 from eyd.canonical import hash_obj, record_hash  # noqa: E402
 from eyd.identity import Identity, derive_id, verify_b64  # noqa: E402
@@ -104,6 +104,12 @@ agent_reports: dict[str, dict] = {}
 site_reports: dict[str, dict] = {}
 receipts: dict[str, dict] = {}  # record_hash -> receipt
 passports: dict[str, dict] = {}  # agent_id -> {passport, subject, checked outcome}
+# Streak penalty (§3.10): agent_id -> {streak, cap, paused, notification}
+penalties: dict[str, dict] = {}
+BAD_CLASSES = ("Unexpected", "Declined", "Deviated")
+STREAK_LIMIT = 3
+PENALTY_CAP = 0.75
+CAP_STEP = 0.008
 dropped_site_reports: list[dict] = []
 seq_seen: dict[tuple[str, int], str] = {}  # (agent_id, seq) -> record_hash (fork detection)
 
@@ -123,6 +129,39 @@ def _verify_signed(payload: dict, pubkey_b64: str) -> bool:
     return verify_b64(_pubkey_raw(pubkey_b64), record_hash(payload).encode(), payload.get("sig", ""))
 
 
+def _penalty(agent_id: str) -> dict:
+    return penalties.setdefault(agent_id,
+                                {"streak": 0, "cap": None, "paused": False, "notification": None})
+
+
+def _apply_penalty(agent_id: str, classification: str, *, demo: bool) -> None:
+    """Streak penalty (§3.10), applied once per newly classified real
+    receipt. Demo-data receipts move the base score only — they never
+    trip or clear a streak."""
+    if demo:
+        return
+    p = _penalty(agent_id)
+    if classification in BAD_CLASSES:
+        p["streak"] += 1
+        if p["streak"] >= STREAK_LIMIT:
+            p["cap"] = PENALTY_CAP
+            if agent_id in passports:
+                p["paused"] = True
+                p["notification"] = (
+                    f"Agent {agent_id}'s trust score has dropped significantly as a "
+                    "result of repeated untrustworthy actions and its Passport has "
+                    "been paused. You may see lower success rates in web interactions "
+                    "until the Passport has been submitted for approval and the agent "
+                    "has been verified stable.")
+    elif classification == "Expected":
+        p["streak"] = 0
+        if p["cap"] is not None:
+            p["cap"] = round(p["cap"] + CAP_STEP, 6)
+            base = agent_score(agent_id)["base"]
+            if base is not None and p["cap"] >= base:
+                p["cap"] = None  # earned back: cap expires into the base
+
+
 def issue_receipt(record_hash_: str) -> dict | None:
     intent = intents.get(record_hash_)
     if intent is None:
@@ -133,19 +172,32 @@ def issue_receipt(record_hash_: str) -> dict | None:
     agent_rep = agent_reports.get(record_hash_)
     site_rep = site_reports.get(record_hash_)
     classification = classify(agent_rep, site_rep)
+    # Deviation (§3.11) outranks the pairing outcome: the agent did
+    # something other than the task it was given, whatever the site saw.
+    if intent.get("task_verb") and intent.get("verb") and intent["verb"] != intent["task_verb"]:
+        classification = "Deviated"
+    first_issue = record_hash_ not in receipts
     receipt = {
         "record_hash": record_hash_,
         "agent_id": agent_id,
         "classification": classification,
+        "verb": intent.get("verb"),
+        "tool": intent.get("tool"),
+        "task_verb": intent.get("task_verb"),
         "ts": utc_now(),
     }
     if site_rep is not None:
         receipt["site_id"] = site_rep["site_id"]
         receipt["site_hash"] = site_rep.get("result_hash")
+        receipt["site_outcome"] = site_rep.get("outcome")
     if agent_rep is not None:
         receipt["agent_hash"] = agent_rep.get("output_hash")
-    receipt["ch_sig"] = CH.sign(record_hash(receipt).encode())
     receipts[record_hash_] = receipt
+    if first_issue:
+        _apply_penalty(agent_id, classification,
+                       demo=bool(receipt.get("demo_data")))
+    receipt["score_after"] = agent_score(agent_id)["score"]
+    receipt["ch_sig"] = CH.sign(record_hash(receipt).encode())
     intents[record_hash_]["state"] = "receipted"
     return receipt
 
@@ -278,6 +330,15 @@ def post_site_report(payload: dict):
     return {"record_hash": rh, "receipt": receipt}
 
 
+@app.get("/receipts")
+def list_receipts(limit: int = 100):
+    """Recent real receipts (console ledger). Seeded and synthetic
+    demo receipts are excluded — they carry no reported intent."""
+    out = [r for rh, r in receipts.items()
+           if not r.get("demo_data") and "verb" in intents.get(rh, {})]
+    return {"receipts": out[-limit:]}
+
+
 @app.get("/receipts/{record_hash_}")
 def get_receipt(record_hash_: str):
     receipt = receipts.get(record_hash_)
@@ -306,13 +367,22 @@ def agent_score(agent_id: str):
     for rh, receipt in receipts.items():
         if receipt["agent_id"] != agent_id:
             continue
-        if intents.get(rh, {}).get("target") == "local":
-            continue  # local actions never affect the score
+        # Local actions never score — except Deviated, which is exactly
+        # the local action a hijacked agent takes (§3.10, §3.11).
+        if intents.get(rh, {}).get("target") == "local" \
+                and receipt["classification"] != "Deviated":
+            continue
         classes.append(receipt["classification"])
         ts = receipt["ts"]
         first = ts if first is None or ts < first else first
         last = ts if last is None or ts > last else last
-    result = compute_score(classes, min_receipts=MIN_RECEIPTS)
+    result = compute_score(classes[-SCORED_WINDOW:], min_receipts=MIN_RECEIPTS)
+    base = result["score"]
+    p = penalties.get(agent_id) or {}
+    result.update({"base": base, "cap": p.get("cap"), "streak": p.get("streak", 0),
+                   "passport_paused": bool(p.get("paused"))})
+    if base is not None and p.get("cap") is not None:
+        result["score"] = min(base, p["cap"])  # effective score (§3.10)
     result.update({"agent_id": agent_id, "first_seen": first, "last_seen": last,
                    "forked": agents[agent_id].get("forked", False)})
     return result
@@ -320,27 +390,38 @@ def agent_score(agent_id: str):
 
 @app.post("/agents/{agent_id}/boost")
 def boost_score(agent_id: str, payload: dict):
-    """DEMO DATA (judge console): add synthetic Expected receipts until
-    the score reaches current + step. Every boosted receipt is labeled
-    demo_data; an unenrolled agent has nowhere for a score to land."""
+    """DEMO DATA (judge console): move the base score by `step` (+0.1
+    boost, -0.1 reduce) with synthetic receipts — Expected up,
+    Unexpected down. Every synthetic receipt is labeled demo_data and
+    never touches the streak penalty. An unenrolled agent has nowhere
+    for a score to land."""
     if agent_id not in agents:
         raise HTTPException(404, "unknown agent: no enrollment to attach a score to")
     step = float(payload.get("step", 0.1))
-    target = min(1.0, (agent_score(agent_id)["score"] or 0.0) + step)
+    cur = agent_score(agent_id)["base"]
+    if cur is None and step < 0:
+        return {"agent_id": agent_id, "score": None, "added": 0, "demo_data": True}
+    target = min(1.0, (cur or 0.0) + step) if step >= 0 else max(0.0, (cur or 0.0) + step)
+    kind = "Expected" if step >= 0 else "Unexpected"
+    tag = "boost" if step >= 0 else "reduce"
     added = 0
     while added < 1000:
-        score = agent_score(agent_id)["score"]
-        if score is not None and (score >= target - 1e-9 or score >= 0.995):
-            break
+        score = agent_score(agent_id)["base"]
+        if score is not None:
+            if step >= 0 and (score >= target - 1e-9 or score >= 0.995):
+                break
+            if step < 0 and score <= target + 1e-9:
+                break
         rh = "sha256:" + hashlib.sha256(
-            f"boost-{agent_id}-{len(receipts)}-{added}".encode()).hexdigest()
+            f"{tag}-{agent_id}-{len(receipts)}-{added}".encode()).hexdigest()
         intents[rh] = {"record_hash": rh, "agent_id": agent_id, "target": "boost.demo",
                        "state": "receipted", "opened_at": datetime.now(timezone.utc).timestamp()}
         receipts[rh] = {"record_hash": rh, "agent_id": agent_id, "site_id": "DEMO-BOOST",
-                        "classification": "Expected", "target": "boost.demo",
+                        "classification": kind, "target": "boost.demo",
                         "ts": utc_now(), "ch_sig": "ed25519:demo", "demo_data": True}
         added += 1
     return {"agent_id": agent_id, "score": agent_score(agent_id)["score"],
+            "base": agent_score(agent_id)["base"],
             "added": added, "demo_data": True}
 
 
@@ -373,6 +454,18 @@ def remove_passport(agent_id: str):
     """Detach: the clearinghouse forgets the agent's Passport."""
     passports.pop(agent_id, None)
     return {"agent_id": agent_id, "passport_status": "missing"}
+
+
+@app.post("/agents/{agent_id}/passport/approve")
+def approve_passport(agent_id: str):
+    """Owner act (§3.10): lift a streak-penalty Passport pause. Removes
+    the refusal; the score cap still has to be earned back."""
+    if agent_id not in agents:
+        raise HTTPException(404, "unknown agent")
+    p = _penalty(agent_id)
+    p["paused"] = False
+    p["notification"] = None
+    return {"agent_id": agent_id, "passport_paused": False}
 
 
 @app.post("/passport/revocations")
@@ -431,8 +524,14 @@ def agent_standing(agent_id: str):
                 http_get=_http_get, fetch_passport=_fetch_passport, now=utc_now())
             entry.update({"outcome": outcome, "step": step})
             passport_status = _passport_status(outcome, step)
+    p = penalties.get(agent_id) or {}
+    if passport_status == "valid" and p.get("paused"):
+        passport_status = "paused"  # streak penalty (§3.10)
     return {"agent_id": agent_id, "score": score.get("score"),
             "passport_status": passport_status,
+            "passport_paused": bool(p.get("paused")),
+            "notification": p.get("notification") if p.get("paused") else None,
+            "cap": p.get("cap"), "streak": p.get("streak", 0),
             "passport_subject": (entry or {}).get("subject"),
             "passport_issuer": ((entry or {}).get("passport") or {}).get("issuer")}
 

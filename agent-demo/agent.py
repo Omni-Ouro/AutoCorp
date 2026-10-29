@@ -45,10 +45,14 @@ class HttpResult:
     headers: dict = field(default_factory=dict)
 
 
-def call_model(messages: list[dict], tool: dict | None = None) -> dict:
+def call_model(messages: list[dict], tool: dict | None = None, *,
+               tools: list[dict] | None = None, system: str | None = None) -> dict:
     base = os.environ["ANTHROPIC_BASE_URL"].rstrip("/")
     payload = {"model": os.environ.get("ANTHROPIC_MODEL", "muse-wonder-1.0"),
-               "max_tokens": 1024, "tools": [tool or TOOL_SCHEMA], "messages": messages}
+               "max_tokens": 4096, "tools": tools or [tool or TOOL_SCHEMA],
+               "messages": messages}
+    if system:
+        payload["system"] = system
     req = urllib.request.Request(
         base + "/v1/messages", data=json.dumps(payload).encode(), method="POST",
         headers={"Content-Type": "application/json",

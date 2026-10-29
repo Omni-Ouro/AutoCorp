@@ -86,6 +86,11 @@ class ToolResult:
 _current_headers: contextvars.ContextVar[dict] = contextvars.ContextVar(
     "eyd_current_headers", default={})
 
+# The framework passes the agent's current task into the hook (§3.11);
+# only (task_hash, task_verb) are kept — never the task text.
+_current_task: contextvars.ContextVar[tuple[str, str] | None] = contextvars.ContextVar(
+    "eyd_current_task", default=None)
+
 
 def current_headers() -> dict:
     """Headers EyD passes into the in-flight tool call (§3.1 step 4).
@@ -207,13 +212,36 @@ class EyD:
             return framework
         return hooked
 
+    # -- task context (deviation, §3.11) -----------------------------------
+    def task_context(self, task: str, verb: str):
+        """Mark the task the agent is currently serving, e.g.
+        `with eyd.task_context("Pay invoice 2142.", "pay"):`. Action
+        Records built inside carry `task_hash`/`task_verb`; the
+        clearinghouse classifies verb ≠ task_verb as Deviated."""
+        import contextlib
+
+        from .canonical import hash_bytes
+
+        @contextlib.contextmanager
+        def _ctx():
+            token = _current_task.set((hash_bytes(task.encode("utf-8")), verb))
+            try:
+                yield
+            finally:
+                _current_task.reset(token)
+
+        return _ctx()
+
     # -- the hook itself (§3.1 per-call flow) ------------------------------
     def _invoke(self, fn, tool_name, verb, target_spec, args, kwargs):
         target = _target_for(args, kwargs, target_spec)
         tool_input = kwargs if kwargs else (args[0] if len(args) == 1 else list(args))
         # 1-3. Resolve verb, build + sign record, chain, report intent.
-        record = self.chain.append(verb=verb, tool=tool_name,
-                                   tool_input=tool_input, target=target)
+        task = _current_task.get()
+        record = self.chain.append(
+            verb=verb, tool=tool_name, tool_input=tool_input, target=target,
+            task_hash=task[0] if task else None,
+            task_verb=task[1] if task else None)
         rec_hash = record_hash(record)
         if self.reporter:
             self.reporter.report_intent(self.identity, record)
