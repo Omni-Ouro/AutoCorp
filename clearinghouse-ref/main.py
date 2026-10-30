@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 
 from classify import SCORED_WINDOW, classify, compute_score  # noqa: E402
 from passport import check_passport_live, verify_notice  # noqa: E402
@@ -81,7 +81,7 @@ def _passport_status(outcome: str, step: str) -> str:
         return "revoked"  # spec treats these as revoked
     return "invalid"
 
-app = FastAPI(title="EyD Clearinghouse (reference)", version="0.1")
+app = FastAPI(title="EyD Clearing House", version="0.1.0")
 
 
 def _load_ch_identity() -> Identity:
@@ -112,6 +112,77 @@ PENALTY_CAP = 0.75
 CAP_STEP = 0.008
 dropped_site_reports: list[dict] = []
 seq_seen: dict[tuple[str, int], str] = {}  # (agent_id, seq) -> record_hash (fork detection)
+
+
+# --- Persistence + hosted mode (v0.1.0) -------------------------------------
+# Local/demo runs keep the store in memory (console reseeds at boot).
+# A hosted Clearing House sets CH_STATE_FILE: the whole store is written
+# through on every mutation (atomic replace) and reloaded at boot, so
+# enrollments, receipts, scores and Passport pauses survive restarts.
+# CH_ADMIN_TOKEN locks the demo-data endpoints (/seed, /boost) that mint
+# trust history: unset = local behavior (open); set = the matching
+# `x-admin-token` header is required, so a hosted instance never mints.
+
+def _state_path() -> str:
+    return os.environ.get("CH_STATE_FILE", "")
+
+
+def _save_state() -> None:
+    path = _state_path()
+    if not path:
+        return
+    data = {"agents": agents, "sites": sites, "intents": intents,
+            "agent_reports": agent_reports, "site_reports": site_reports,
+            "receipts": receipts, "passports": passports,
+            "penalties": penalties,
+            "seq_seen": [[a, s, rh] for (a, s), rh in seq_seen.items()],
+            "dropped_site_reports": dropped_site_reports}
+    try:
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        os.replace(tmp, p)
+    except Exception as e:  # persistence must never break the request path
+        print(f"clearinghouse: state save failed: {e}", file=sys.stderr)
+
+
+def _load_state() -> None:
+    path = _state_path()
+    if not path or not Path(path).exists():
+        return
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"clearinghouse: state load failed: {e}", file=sys.stderr)
+        return
+    for name in ("agents", "sites", "intents", "agent_reports", "site_reports",
+                 "receipts", "passports", "penalties"):
+        globals()[name].update(data.get(name, {}))
+    for agent_id, seq, rh in data.get("seq_seen", []):
+        seq_seen[(agent_id, int(seq))] = rh
+    dropped_site_reports.extend(data.get("dropped_site_reports", []))
+    print(f"clearinghouse: restored state from {path} "
+          f"({len(receipts)} receipts, {len(agents)} agents)", file=sys.stderr)
+
+
+_load_state()
+
+
+@app.middleware("http")
+async def _persist_after_mutation(request: Request, call_next):
+    response = await call_next(request)
+    if request.method in ("POST", "DELETE"):
+        _save_state()
+    return response
+
+
+def _require_admin(request: Request) -> None:
+    """Demo-data endpoints mint trust history; a hosted Clearing House
+    (CH_ADMIN_TOKEN set) requires the token, a local one stays open."""
+    token = os.environ.get("CH_ADMIN_TOKEN", "")
+    if token and request.headers.get("x-admin-token") != token:
+        raise HTTPException(403, "admin token required")
 
 
 def _ts_epoch(ts: str) -> float:
@@ -211,7 +282,8 @@ def maybe_issue(record_hash_: str) -> dict | None:
 
 @app.get("/")
 def health():
-    return {"service": "eyd-clearinghouse-ref", "pubkey": CH.pubkey_b64, "ch_id": CH.id}
+    return {"service": "eyd-clearinghouse", "name": "EyD Clearing House",
+            "version": "0.1.0", "pubkey": CH.pubkey_b64, "ch_id": CH.id}
 
 
 @app.get("/pubkey")
@@ -389,12 +461,13 @@ def agent_score(agent_id: str):
 
 
 @app.post("/agents/{agent_id}/boost")
-def boost_score(agent_id: str, payload: dict):
+def boost_score(agent_id: str, payload: dict, request: Request):
     """DEMO DATA (judge console): move the base score by `step` (+0.1
     boost, -0.1 reduce) with synthetic receipts — Expected up,
     Unexpected down. Every synthetic receipt is labeled demo_data and
     never touches the streak penalty. An unenrolled agent has nowhere
     for a score to land."""
+    _require_admin(request)
     if agent_id not in agents:
         raise HTTPException(404, "unknown agent: no enrollment to attach a score to")
     step = float(payload.get("step", 0.1))
@@ -552,8 +625,9 @@ def sweep(now: float | None = None):
 
 
 @app.post("/seed")
-def seed(payload: dict):
+def seed(payload: dict, request: Request):
     """Load demo fixture receipts (DEMO DATA — see fixtures/README.md)."""
+    _require_admin(request)
     count = 0
     for item in payload.get("receipts", []):
         # Fixtures are unsigned demo history: enroll stub parties on first sight.
