@@ -7,13 +7,49 @@ it, and it sits in the tool-call path: every call the agent makes is
 signed under the agent's own Ed25519 key and reported to a
 clearinghouse before it goes out. The counterparty site reports its
 side after. The clearinghouse pairs the two, classifies the result
-(Expected, Unexpected, Declined, Unverified), and issues a signed Proof
+(Expected, Unexpected, Declined, Unverified, Deviated), and issues a signed Proof
 Receipt to both parties. Agents that don't route through EyD get no receipt.
 Sites that gate on EyD only admit agents that do.
 
 Built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026),
 Startup track. Design doc: [EYD_DESIGN.md](EYD_DESIGN.md). Proof format:
 [spec/PROOF_v0.md](spec/PROOF_v0.md).
+
+## Test the beta (hosted)
+
+EyD Clearing House **v0.1.0** runs hosted, and Omni-Ouro runs the
+business SDK on its own domain as a public playground — test against
+both, no demo driver needed:
+
+- **Clearing House:** https://clearinghouse.omni-ouro.com — `/` names the service, version, and public key.
+- **Playground business:** https://eyd.omni-ouro.com — `/search` open, `/deck` needs EyD, `/meeting` needs PoT ≥ 0.8. Sandboxed: nothing is emailed, ever.
+
+**As an agent** — install the SDK and act (five minutes, no API key):
+
+```bash
+pip install git+https://github.com/Omni-Ouro/AutoCorp.git
+python examples/beta_agent.py
+```
+
+It enrolls, searches, gets a meeting refused while its score is
+unknown, earns a score with clean actions, and gets the meeting.
+Your identity persists, so the score you build is still there tomorrow.
+
+**As a business** — the verifier SDK in front of your endpoints.
+[playground/](playground/) is Omni-Ouro's working install (~150 lines):
+
+```python
+site = EyDSite(identity, clearinghouse_url="https://clearinghouse.omni-ouro.com",
+               domain="eyd.example.com", callback_url="https://eyd.example.com")
+site.enroll()                    # then, per request:
+site.score_allows(agent_id, 0.8) # gate on the PoT score
+site.report(record_hash, agent_id, "fulfilled", response_bytes)
+```
+
+Hosted honesty: the public Clearing House is the single-node reference
+below, run with persistence on and its demo-data endpoints (`/seed`,
+`/boost`) admin-locked — nobody can mint trust on it. Seeded history
+stays a local-demo fixture, labeled as such everywhere.
 
 ## Quickstart (Day 1 core)
 
@@ -44,7 +80,7 @@ pytest              # canonicalization vectors, records, chain
 - **Judge console** (`console/`) — the demo page: pick an agent, set the
   site's gates, click a task, watch the refusal or the receipt land.
 - **EyD window** (`eyd-ui/window.py`) — live action list and receipt viewer (local web view).
-- **Demo agents** (`agent-demo/`) — one Meta-model agent ([agent.py](agent-demo/agent.py)), three identities: A's tools undecorated, B's/C's carry `@eyd.tool` under different keys, model code identical. The console drives it, one model call per click.
+- **Demo agents** (`agent-demo/`) — one Meta-model agent ([agent.py](agent-demo/agent.py)) behind six console identities: bare, low-score EyD, EyD + Passport, Passport-only, newcomer, and the Bad Agent. A's tools are undecorated; the rest carry `@eyd.tool` under different keys; model code identical. The console drives it, one model call per click.
 
 ## Run the demo locally
 
@@ -60,15 +96,13 @@ CONSOLE_PORT=8080 python console/server.py &                       # judge conso
 
 ## Deploy (droplet)
 
-One command starts the whole stack; only the judge console binds
-publicly (`:8080`) — the issuer, clearinghouse, and site stay on
-localhost and the console reaches them server-side:
-
-```bash
-pip install -e ".[clearinghouse]"
-export ANTHROPIC_BASE_URL=... ANTHROPIC_AUTH_TOKEN=...   # for the console's model calls
-scripts/start-all.sh        # scripts/stop-all.sh to stop
-```
+The hosted beta is two services — EyD Clearing House v0.1.0 and the
+Omni-Ouro playground — behind Caddy on one droplet; the judge console
+is a local demo and is not part of it. Runbook:
+[deploy/README.md](deploy/README.md). Locally, the whole console
+stack also starts in one command (`scripts/start-all.sh`,
+`scripts/stop-all.sh` to stop; console binds localhost unless
+`HOST=0.0.0.0` is set).
 
 ## What we didn't build (third-party / hosted)
 

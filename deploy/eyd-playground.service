@@ -1,0 +1,15 @@
+[Unit]
+Description=Omni-Ouro EyD playground (business SDK)
+After=network.target eyd-clearinghouse.service
+Wants=eyd-clearinghouse.service
+
+[Service]
+User=eyd
+WorkingDirectory=/opt/eyd
+EnvironmentFile=/opt/eyd/eyd.env
+ExecStart=/opt/eyd/.venv/bin/python playground/main.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -6,6 +6,10 @@ __pycache__/
 .tmp-ch-key.json
 agent-demo/.keys/
 passport-demo/.keys/
+playground/.keys/
+state/
+.tmp-ch-state.json
+.tmp-beta/
 .eyd/
 *.jsonl
 node_modules/

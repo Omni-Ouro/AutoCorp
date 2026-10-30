@@ -1,0 +1,14 @@
+[Unit]
+Description=EyD Clearing House v0.1.0
+After=network.target
+
+[Service]
+User=eyd
+WorkingDirectory=/opt/eyd
+EnvironmentFile=/opt/eyd/eyd.env
+ExecStart=/opt/eyd/.venv/bin/python clearinghouse-ref/main.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

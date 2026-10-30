@@ -1,0 +1,11 @@
+# EyD beta droplet — Caddy terminates TLS for both public names.
+# DNS: clearinghouse.omni-ouro.com and eyd.omni-ouro.com -> this droplet.
+# Everything behind it binds localhost only.
+
+clearinghouse.omni-ouro.com {
+	reverse_proxy 127.0.0.1:8787
+}
+
+eyd.omni-ouro.com {
+	reverse_proxy 127.0.0.1:8002
+}

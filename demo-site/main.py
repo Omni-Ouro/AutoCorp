@@ -97,23 +97,27 @@ def make_app(*, clearinghouse_url: str = "http://127.0.0.1:8787",
             token = site.accept_attestation(att) if att else None
             if token is None:
                 return _refusal(site, REFUSAL_UNKNOWN, challenge=True)
-            if not site.score_allows(agent_id, gate["min_score"]):
-                score = site.scores.get(agent_id)
-                reason = REFUSAL_UNKNOWN if score is None else REFUSAL_LOW
-                if record_hash_ and agent_id:
-                    site.report(record_hash_, agent_id, "declined", _body_bytes(reason))
-                ledger(agent_id, action, f"refused: {reason['reason']}", None, record_hash_)
-                return JSONResponse(reason, status_code=403)
-            passport = site.passport_status(agent_id) if agent_id else "unknown"
-            if passport in ("revoked", "paused"):
-                reason = REFUSAL_PASSPORT_REVOKED if passport == "revoked" else REFUSAL_PAUSED
-                if record_hash_:
-                    site.report(record_hash_, agent_id, "declined", _body_bytes(reason))
-                ledger(agent_id, action, f"refused: {reason['reason']}", None, record_hash_)
-                return JSONResponse(reason, status_code=403)
             session_token = token
         else:
             return _refusal(site, REFUSAL_UNKNOWN, challenge=True)
+
+        # A session authenticates the agent; it does not carry the gate
+        # decision from an earlier, possibly weaker, action. Check this
+        # action's score and Passport standing on every gated request.
+        if not site.score_allows(agent_id, gate["min_score"]):
+            score = site.scores.get(agent_id)
+            reason = REFUSAL_UNKNOWN if score is None else REFUSAL_LOW
+            if record_hash_ and agent_id:
+                site.report(record_hash_, agent_id, "declined", _body_bytes(reason))
+            ledger(agent_id, action, f"refused: {reason['reason']}", None, record_hash_)
+            return JSONResponse(reason, status_code=403)
+        passport = site.passport_status(agent_id) if agent_id else "unknown"
+        if passport in ("revoked", "paused"):
+            reason = REFUSAL_PASSPORT_REVOKED if passport == "revoked" else REFUSAL_PAUSED
+            if record_hash_:
+                site.report(record_hash_, agent_id, "declined", _body_bytes(reason))
+            ledger(agent_id, action, f"refused: {reason['reason']}", None, record_hash_)
+            return JSONResponse(reason, status_code=403)
 
         resp = perform(action, data, agent_id, record_hash_)
         if session_token:
