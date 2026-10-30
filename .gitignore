@@ -11,3 +11,5 @@ passport-demo/.keys/
 node_modules/
 dist/
 .env
+# Local credentials — never commit (Baseten key for the hackathon)
+/New Text Document.txt
