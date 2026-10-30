@@ -22,7 +22,7 @@ Public names, TLS via Caddy (same pattern as the Eyro droplet):
 ## First deploy (over SSH, as root)
 
 ```bash
-adduser --system --home /opt/eyd eyd
+adduser --system --group --home /opt/eyd eyd
 apt-get update && apt-get install -y git python3-venv ufw \
   debian-keyring debian-archive-keyring apt-transport-https curl gpg
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
@@ -38,6 +38,7 @@ chmod 600 eyd.env && chown -R eyd:eyd /opt/eyd
 cp deploy/eyd-clearinghouse.service deploy/eyd-playground.service /etc/systemd/system/
 cp deploy/Caddyfile /etc/caddy/Caddyfile
 systemctl daemon-reload && systemctl enable --now eyd-clearinghouse eyd-playground caddy
+systemctl restart caddy   # the package may already run it with the default site
 ufw allow 22 && ufw allow 80 && ufw allow 443 && ufw --force enable
 ```
 
