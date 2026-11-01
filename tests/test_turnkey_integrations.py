@@ -33,7 +33,7 @@ def _app_with_gate():
     app.state.reports = reports
 
     @app.post("/pay")
-    @gated(site, min_score=0.8)
+    @gated(site, min_score=0.8, info_url="https://example.com/eyd")
     async def pay(request: Request):
         return {"status": "paid", "agent": request.state.eyd_agent}
 
@@ -48,6 +48,8 @@ def test_gated_challenges_without_attestation():
     assert r.status_code == 403
     assert r.json()["reason"] == "PoT score unknown"
     assert r.headers.get("eyd-challenge")  # agent SDK will attest + retry
+    # Owner-facing pointer; the refusal body itself never names EyD.
+    assert r.headers.get("eyd-info") == "https://example.com/eyd"
 
 
 def test_gated_session_does_not_elevate_and_admits_when_earned():

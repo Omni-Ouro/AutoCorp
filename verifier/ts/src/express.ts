@@ -29,6 +29,10 @@ export interface EyDGateOptions {
   eydRequired?: boolean;
   /** Observability hook (the playground board uses it). */
   onEvent?: (agentId: string | null, result: string) => void;
+  /** Owner-facing pointer sent as the EyD-Info header on challenges.
+   *  The refusal body never names EyD; this tells the agent's owner
+   *  where the credential comes from. */
+  infoUrl?: string;
 }
 
 export interface EyDRequestLike {
@@ -73,6 +77,7 @@ export function eydGate(site: EyDSite, opts: EyDGateOptions = {}) {
       if (challenge) {
         res.setHeader("EyD-Challenge", site.newChallenge());
         res.setHeader("EyD-Clearinghouse", site.clearinghouseUrl);
+        if (opts.infoUrl) res.setHeader("EyD-Info", opts.infoUrl);
       }
       res.status(403).json(reason);
     };

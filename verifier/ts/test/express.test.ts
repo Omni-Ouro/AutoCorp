@@ -72,12 +72,14 @@ test("eydGate: no attestation gets a challenge", async () => {
   const site = fakeSite();
   const req = { headers: { "eyd-agent": "AGENT1" } };
   const res = fakeRes();
-  await eydGate(site, { minScore: 0.8 })(req, res, () => {
-    throw new Error("next must not be called");
-  });
+  await eydGate(site, { minScore: 0.8, infoUrl: "https://example.com/eyd" })(
+    req, res, () => {
+      throw new Error("next must not be called");
+    });
   assert.equal(res.statusCode, 403);
   assert.equal(res.headers["EyD-Challenge"], "nonce-1");
   assert.equal(res.headers["EyD-Clearinghouse"], site.clearinghouseUrl);
+  assert.equal(res.headers["EyD-Info"], "https://example.com/eyd");
 });
 
 test("identity import used by consumers resolves", () => {

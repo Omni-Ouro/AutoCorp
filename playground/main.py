@@ -133,12 +133,12 @@ Clearinghouse: <code>{site.clearinghouse_url}</code></p>
         return _action_body("search", {"need": q})
 
     @app.post("/deck")
-    @gated(site, min_score=None, on_event=board)
+    @gated(site, min_score=None, on_event=board, info_url=callback_url)
     async def deck(request: Request):
         return _action_body("deck", await _json_body(request))
 
     @app.post("/meeting")
-    @gated(site, min_score=0.8, on_event=board)
+    @gated(site, min_score=0.8, on_event=board, info_url=callback_url)
     async def meeting(request: Request):
         return _action_body("meeting", await _json_body(request))
 

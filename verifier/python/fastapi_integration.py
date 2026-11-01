@@ -18,6 +18,11 @@ A session authenticates the agent — the gate for *this* action is
 checked on every request, so a session minted at a weaker gate never
 elevates. (The demo site keeps hand-written gates because the judge
 console mutates them at runtime; fixed-gate sites want this.)
+
+The refusal body never names EyD — an agent learns only that it lacks
+a credential. `info_url`, if given, rides the challenge response as an
+`EyD-Info` header: an owner-facing pointer to where the credential
+comes from, invisible in the acting agent's result.
 """
 from __future__ import annotations
 
@@ -43,11 +48,15 @@ def _body_bytes(body: dict) -> bytes:
     return json.dumps(body, sort_keys=True).encode()
 
 
-def gated(site, *, min_score=None, eyd_required=True, on_event=None):
+def gated(site, *, min_score=None, eyd_required=True, on_event=None,
+          info_url=None):
     """Decorate a FastAPI endpoint with the EyD gate.
 
     on_event(agent_id, action_name, result), if given, fires on every
     refusal and admission — the playground's request board hooks here.
+    info_url, if given, is sent as the EyD-Info header on challenge
+    responses so the agent's owner can find the credential; the refusal
+    body itself stays blind.
     """
     def decorator(fn):
         @functools.wraps(fn)
@@ -68,6 +77,8 @@ def gated(site, *, min_score=None, eyd_required=True, on_event=None):
                 if challenge:
                     headers = {"EyD-Challenge": site.new_challenge(),
                                "EyD-Clearinghouse": site.clearinghouse_url}
+                    if info_url:
+                        headers["EyD-Info"] = info_url
                 return JSONResponse(reason, status_code=403, headers=headers)
 
             async def perform() -> Response:
