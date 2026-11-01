@@ -13,6 +13,7 @@ import test from "node:test";
 import {
   EyDSite,
   Identity,
+  buildSiteReport,
   canonicalJson,
   hashBytes,
   hashObj,
@@ -113,6 +114,25 @@ test("site report: Python signature verifies", () => {
     Buffer.from(fixtures.site.pubkey_b64, "base64"),
     Buffer.from(recordHash(report), "utf-8"),
     report.sig,
+  );
+  assert.equal(ok, true);
+});
+
+test("site report: expectation_match rides along, signed", () => {
+  const site = Identity.fromSeed(
+    Buffer.from(fixtures.site.seed_b64, "base64"), "site");
+  const report = buildSiteReport(site, {
+    recordHash: "sha256:" + "ab".repeat(32),
+    agentId: fixtures.agent.id,
+    outcome: "fulfilled",
+    result: "hello",
+    expectationMatch: false,
+  });
+  assert.equal(report.expectation_match, false);
+  const ok = verifyB64(
+    Buffer.from(fixtures.site.pubkey_b64, "base64"),
+    Buffer.from(recordHash(report), "utf-8"),
+    report.sig as string,
   );
   assert.equal(ok, true);
 });

@@ -72,7 +72,8 @@ def verify_attestation(att: dict, expected_nonce: str, pubkey_raw: bytes,
 
 
 def build_site_report(identity: Identity, *, record_hash_: str, agent_id: str,
-                      outcome: str, result: bytes | str | dict | None) -> dict:
+                      outcome: str, result: bytes | str | dict | None,
+                      expectation_match: bool | None = None) -> dict:
     if outcome not in ("fulfilled", "declined"):
         raise ValueError("outcome must be fulfilled|declined")
     if isinstance(result, bytes):
@@ -87,6 +88,10 @@ def build_site_report(identity: Identity, *, record_hash_: str, agent_id: str,
         "record_hash": record_hash_, "agent_id": agent_id, "site_id": identity.id,
         "outcome": outcome, "result_hash": result_hash, "ts": utc_now(),
     }
+    if expectation_match is not None:
+        # Vector two: the site's signed attestation that its result
+        # matched the Clearing House's pre-registered model expectation.
+        report["expectation_match"] = bool(expectation_match)
     report["sig"] = identity.sign(record_hash(report).encode())
     return report
 
@@ -199,10 +204,20 @@ class EyDSite:
         return "unknown"  # fail closed: unable to tell
 
     # -- reporting ------------------------------------------------------
+    def get_expectation(self, record_hash_: str) -> dict | None:
+        """The Clearing House's pre-registered model expectation for an
+        action (vector two), or None. Judge your result against it and
+        pass the verdict as report(..., expectation_match=...)."""
+        status, body = _request_json(
+            "GET", f"{self.clearinghouse_url}/expectations/{record_hash_}")
+        return body if status == 200 else None
+
     def report(self, record_hash_: str, agent_id: str, outcome: str,
-               result: bytes | str | dict) -> dict | None:
+               result: bytes | str | dict,
+               expectation_match: bool | None = None) -> dict | None:
         report = build_site_report(self.identity, record_hash_=record_hash_,
-                                   agent_id=agent_id, outcome=outcome, result=result)
+                                   agent_id=agent_id, outcome=outcome, result=result,
+                                   expectation_match=expectation_match)
         status, body = _request_json(
             "POST", f"{self.clearinghouse_url}/reports/site", report)
         receipt = (body or {}).get("receipt")

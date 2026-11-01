@@ -27,7 +27,7 @@ def _load_app(name: str, filename: str):
                        domain="127.0.0.1")
     site = app.state.site
     site.passport_status = lambda agent_id: "valid"
-    site.report = lambda record_hash_, agent_id, outcome, result: {
+    site.report = lambda record_hash_, agent_id, outcome, result, **kw: {
         "classification": "Declined" if outcome == "declined" else "Expected"}
     return app, site
 

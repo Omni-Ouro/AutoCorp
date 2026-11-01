@@ -131,18 +131,24 @@ Clearinghouse: <code>{site.clearinghouse_url}</code></p>
                 "requests": app.state.requests, "receipts": site.receipts,
                 "scores_seen": site.scores}
 
+    # Fulfilled playground results are fixed-shape confirmations, so
+    # the site honestly attests they match the model expectation
+    # registered for the action (vector two) — signed, so the claim
+    # itself is evidence.
     @app.get("/search")
-    @gated(site, eyd_required=False, on_event=board)
+    @gated(site, eyd_required=False, on_event=board, expectation_match=True)
     async def search(request: Request, q: str = ""):
         return _action_body("search", {"need": q})
 
     @app.post("/deck")
-    @gated(site, min_score=None, on_event=board, info_url=callback_url)
+    @gated(site, min_score=None, on_event=board, info_url=callback_url,
+           expectation_match=True)
     async def deck(request: Request):
         return _action_body("deck", await _json_body(request))
 
     @app.post("/meeting")
-    @gated(site, min_score=0.8, on_event=board, info_url=callback_url)
+    @gated(site, min_score=0.8, on_event=board, info_url=callback_url,
+           expectation_match=True)
     async def meeting(request: Request):
         return _action_body("meeting", await _json_body(request))
 

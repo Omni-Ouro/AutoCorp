@@ -33,6 +33,10 @@ export interface EyDGateOptions {
    *  The refusal body never names EyD; this tells the agent's owner
    *  where the credential comes from. */
   infoUrl?: string;
+  /** The site's signed attestation (vector two) that fulfilled
+   *  results match the Clearing House's pre-registered model
+   *  expectation. Leave unset if the site does not judge results. */
+  expectationMatch?: boolean;
 }
 
 export interface EyDRequestLike {
@@ -92,7 +96,7 @@ export function eydGate(site: EyDSite, opts: EyDGateOptions = {}) {
           ? body
           : Buffer.from(typeof body === "string" ? body : JSON.stringify(body ?? ""));
         void site
-          .report(recordHash, agentId, "fulfilled", bytes)
+          .report(recordHash, agentId, "fulfilled", bytes, opts.expectationMatch)
           .catch(() => {});
         opts.onEvent?.(agentId, "admitted");
       };

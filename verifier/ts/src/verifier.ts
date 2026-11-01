@@ -92,6 +92,7 @@ export function buildSiteReport(
     agentId: string;
     outcome: "fulfilled" | "declined";
     result: Buffer | string | Record<string, unknown> | null;
+    expectationMatch?: boolean | null;
   },
 ): Record<string, unknown> {
   if (opts.outcome !== "fulfilled" && opts.outcome !== "declined") {
@@ -110,6 +111,11 @@ export function buildSiteReport(
     result_hash: resultHash,
     ts: utcNow(),
   };
+  if (opts.expectationMatch !== undefined && opts.expectationMatch !== null) {
+    // Vector two: the site's signed attestation that its result
+    // matched the Clearing House's pre-registered model expectation.
+    report.expectation_match = Boolean(opts.expectationMatch);
+  }
   report.sig = identity.sign(Buffer.from(recordHash(report), "utf-8"));
   return report;
 }
@@ -256,17 +262,30 @@ export class EyDSite {
 
   // -- reporting --------------------------------------------------------
 
+  async getExpectation(recordHash_: string): Promise<any | null> {
+    // The Clearing House's pre-registered model expectation for an
+    // action (vector two), or null. Judge your result against it and
+    // pass the verdict as report(..., expectationMatch).
+    const { status, body } = await requestJson(
+      "GET",
+      `${this.clearinghouseUrl}/expectations/${recordHash_}`,
+    );
+    return status === 200 ? body : null;
+  }
+
   async report(
     recordHash_: string,
     agentId: string,
     outcome: "fulfilled" | "declined",
     result: Buffer | string | Record<string, unknown>,
+    expectationMatch?: boolean | null,
   ): Promise<any | null> {
     const report = buildSiteReport(this.identity, {
       recordHash: recordHash_,
       agentId,
       outcome,
       result,
+      expectationMatch,
     });
     const { body } = await requestJson(
       "POST",

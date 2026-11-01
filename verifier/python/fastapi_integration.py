@@ -49,7 +49,7 @@ def _body_bytes(body: dict) -> bytes:
 
 
 def gated(site, *, min_score=None, eyd_required=True, on_event=None,
-          info_url=None):
+          info_url=None, expectation_match=None):
     """Decorate a FastAPI endpoint with the EyD gate.
 
     on_event(agent_id, action_name, result), if given, fires on every
@@ -57,6 +57,10 @@ def gated(site, *, min_score=None, eyd_required=True, on_event=None,
     info_url, if given, is sent as the EyD-Info header on challenge
     responses so the agent's owner can find the credential; the refusal
     body itself stays blind.
+    expectation_match, if given, is the site's signed attestation
+    (vector two) that fulfilled results match the Clearing House's
+    pre-registered model expectation for the action. Leave unset if
+    the site does not judge its results against the sketch.
     """
     def decorator(fn):
         @functools.wraps(fn)
@@ -92,7 +96,10 @@ def gated(site, *, min_score=None, eyd_required=True, on_event=None,
                 # framework would pair as Unexpected at the clearinghouse.
                 body_bytes = _body_bytes(body)
                 if record_hash_ and agent_id:
-                    site.report(record_hash_, agent_id, "fulfilled", body_bytes)
+                    report_kwargs = ({"expectation_match": expectation_match}
+                                     if expectation_match is not None else {})
+                    site.report(record_hash_, agent_id, "fulfilled", body_bytes,
+                                **report_kwargs)
                 event("admitted")
                 return Response(
                     content=body_bytes, media_type="application/json",

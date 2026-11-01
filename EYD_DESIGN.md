@@ -199,6 +199,9 @@ A fifth classification. The framework passes the agent's current **task** into t
 
 Deviated counts toward the streak penalty. It is the classification for a hijacked or prompt-injected agent: the task said pay, the agent tried to send.
 
+### 3.12 Vector two — model expectation (advisory)
+At intent time — before the action runs — the Clearing House asks a model, from the declared action alone (verb, tool, target, and the task verb when given; never tool arguments, never result content), for a one-sentence sketch of what a successful result should look like. The sketch is pre-registered against the record_hash, bound into the signed receipt (`expectation: {model, sketch}`), and the site holding the actual result may attest in its signed report whether the result matched (`expectation_match`). Sites read the sketch at `GET /expectations/{record_hash}` while deciding. Advisory by construction: an expectation never changes a classification or the PoT score — it is evidence, not a referee. Enabled when a model gateway is configured; any failure yields no expectation and never blocks an intent. Long-term, the accumulated sketches and attested outcomes per site and tool form a corpus of expected action shapes — the reference data later verification vectors classify against.
+
 ## 4. Proof format v0 (`spec/PROOF_v0.md`)
 
 ### 4.1 Action Record (agent-signed)

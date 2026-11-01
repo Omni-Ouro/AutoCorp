@@ -7,6 +7,25 @@ the same code that runs locally for testing and as the hosted beta at
 Stores hashes, signatures, timestamps, classifications, and the
 counterparty of each action. Never inputs, outputs, or tool arguments.
 
+## Model expectation (vector two, advisory)
+
+With a model gateway configured, each intent also gets a pre-registered
+one-sentence sketch of what a successful result should look like,
+generated from the declared action alone (verb, tool, target) — never
+arguments, never result content. The sketch is bound into the signed
+receipt, and the site may attest in its signed report whether its
+result matched (`expectation_match`). Advisory only: it never changes
+a classification or the PoT score, and any failure yields no
+expectation and never blocks an intent. Sites read the sketch at
+`GET /expectations/{record_hash}`.
+
+Env: `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` enable the vector
+(model: `EXPECTATION_MODEL`, else `ANTHROPIC_MODEL`, else
+`muse-wonder-1.0`); `EXPECTATION_VERBS` optionally restricts which
+verbs get sketches; `EXPECTATIONS=off` disables it. Sketches persist
+with the rest of the store — over time they accumulate into a
+per-site/tool corpus of expected action shapes.
+
 Run (from repo root):
 
 ```bash

@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
 
 from classify import SCORED_WINDOW, classify, compute_score  # noqa: E402
+from expectations import generate_expectation, model_name as expectation_model_name  # noqa: E402
 from passport import check_passport_live, verify_notice  # noqa: E402
 from eyd.canonical import hash_obj, record_hash  # noqa: E402
 from eyd.identity import Identity, derive_id, verify_b64  # noqa: E402
@@ -103,6 +104,8 @@ intents: dict[str, dict] = {}  # record_hash -> intent + state + opened_at (epoc
 agent_reports: dict[str, dict] = {}
 site_reports: dict[str, dict] = {}
 receipts: dict[str, dict] = {}  # record_hash -> receipt
+# Verification vector two (expectations.py): record_hash -> {sketch, model, ts}
+expectation_store: dict[str, dict] = {}
 passports: dict[str, dict] = {}  # agent_id -> {passport, subject, checked outcome}
 # Streak penalty (§3.10): agent_id -> {streak, cap, paused, notification}
 penalties: dict[str, dict] = {}
@@ -134,7 +137,7 @@ def _save_state() -> None:
     data = {"agents": agents, "sites": sites, "intents": intents,
             "agent_reports": agent_reports, "site_reports": site_reports,
             "receipts": receipts, "passports": passports,
-            "penalties": penalties,
+            "penalties": penalties, "expectations": expectation_store,
             "seq_seen": [[a, s, rh] for (a, s), rh in seq_seen.items()],
             "dropped_site_reports": dropped_site_reports}
     try:
@@ -159,6 +162,7 @@ def _load_state() -> None:
     for name in ("agents", "sites", "intents", "agent_reports", "site_reports",
                  "receipts", "passports", "penalties"):
         globals()[name].update(data.get(name, {}))
+    expectation_store.update(data.get("expectations", {}))
     for agent_id, seq, rh in data.get("seq_seen", []):
         seq_seen[(agent_id, int(seq))] = rh
     dropped_site_reports.extend(data.get("dropped_site_reports", []))
@@ -261,6 +265,13 @@ def issue_receipt(record_hash_: str) -> dict | None:
         receipt["site_id"] = site_rep["site_id"]
         receipt["site_hash"] = site_rep.get("result_hash")
         receipt["site_outcome"] = site_rep.get("outcome")
+        if site_rep.get("expectation_match") is not None:
+            receipt["expectation_match"] = bool(site_rep["expectation_match"])
+    # Vector two: the pre-registered model expectation, bound into the
+    # signed receipt. Annotation only — classification is already set.
+    exp = expectation_store.get(record_hash_)
+    if exp is not None:
+        receipt["expectation"] = {"model": exp["model"], "sketch": exp["sketch"]}
     if agent_rep is not None:
         receipt["agent_hash"] = agent_rep.get("output_hash")
     receipts[record_hash_] = receipt
@@ -283,7 +294,8 @@ def maybe_issue(record_hash_: str) -> dict | None:
 @app.get("/")
 def health():
     return {"service": "eyd-clearinghouse", "name": "EyD Clearing House",
-            "version": "0.1.0", "pubkey": CH.pubkey_b64, "ch_id": CH.id}
+            "version": "0.1.0", "pubkey": CH.pubkey_b64, "ch_id": CH.id,
+            "expectation_model": expectation_model_name()}
 
 
 @app.get("/pubkey")
@@ -357,7 +369,15 @@ def post_intent(payload: dict):
         raise HTTPException(409, "forked: same seq, different record_hash")
     seq_seen[(agent_id, seq)] = rh
     intents[rh] = {**payload, "state": "pending", "opened_at": _ts_epoch(payload.get("ts", ""))}
-    return {"record_hash": rh, "state": "pending"}
+    # Vector two registers its prediction now, before the action runs;
+    # a model failure yields no expectation and never blocks the intent.
+    exp = generate_expectation(verb=payload.get("verb", ""), tool=payload.get("tool", ""),
+                               target=payload.get("target", ""),
+                               task_verb=payload.get("task_verb"))
+    if exp is not None:
+        exp = {**exp, "ts": utc_now()}
+        expectation_store[rh] = exp
+    return {"record_hash": rh, "state": "pending", "expectation": exp}
 
 
 @app.post("/reports/agent")
@@ -400,6 +420,16 @@ def post_site_report(payload: dict):
     site_reports[rh] = payload  # several reports / one record_hash pair as one action
     receipt = maybe_issue(rh)
     return {"record_hash": rh, "receipt": receipt}
+
+
+@app.get("/expectations/{record_hash_}")
+def get_expectation(record_hash_: str):
+    """The pre-registered model expectation for an action (vector two).
+    Sites read it to judge their result before attesting a match."""
+    exp = expectation_store.get(record_hash_)
+    if exp is None:
+        raise HTTPException(404, "no expectation for this record_hash")
+    return {"record_hash": record_hash_, **exp}
 
 
 @app.get("/receipts")
