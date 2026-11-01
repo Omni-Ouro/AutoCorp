@@ -19,20 +19,25 @@ gate, get one of the five refusal reasons and a Declined receipt.
 
 ```python
 from verifier import EyDSite
+from fastapi_integration import gated
 
 site = EyDSite(my_site_identity,
                clearinghouse_url="https://clearinghouse.omni-ouro.com",
                domain="eyd.example.com", callback_url="https://eyd.example.com")
 site.enroll()
-# per request: challenge -> attestation -> session, then
-if not site.score_allows(agent_id, min_score=0.8):
-    return refusal            # {"error": "refused", "reason": "..."}
-site.report(record_hash, agent_id, "fulfilled", response_bytes)
+
+@app.post("/meeting")
+@gated(site, min_score=0.8)          # EyD + PoT >= 0.8, or a refusal + Declined receipt
+async def meeting(request: Request):
+    return {"status": "recorded"}   # the decorator reports it fulfilled
 ```
 
-[main.py](main.py) is the full working version of that sketch
-(~150 lines): attestation, sessions, score and Passport checks,
-revocation push handling, and a request board.
+[main.py](main.py) is the full working version: the SDK's `@gated`
+decorator (attestation, sessions, per-action score and Passport
+checks, reporting) over three small handlers, plus revocation push
+handling and a request board. Node/TypeScript sites use the mirror
+SDK in [../verifier/ts/](../verifier/ts/) with its `eydGate` Express
+middleware.
 
 ## Run it
 
