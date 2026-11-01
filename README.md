@@ -181,6 +181,14 @@ stack also starts in one command (`scripts/start-all.sh`,
   hosted beta are the same code.
 - Seeded demo history in `fixtures/` is **demo data**, labeled as such everywhere.
 
-## License
+## How this repo was built
 
+Commits carry a `Co-Authored-By: Claude Code` trailer: the
+development harness was Claude Code, running Meta's
+`muse-wonder-1.0` model — no Anthropic model wrote this code. The
+models the product itself calls are Meta's: the expectation vector
+runs `meta-models/muse-spark-open-1026` (open-weight Muse Spark via
+Baseten), and the demo agents run on the same Meta model gateway.
+
+## License
 Apache-2.0 — see [LICENSE](LICENSE).
