@@ -15,6 +15,10 @@ Built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026),
 Startup track. Design doc: [EYD_DESIGN.md](EYD_DESIGN.md). Proof format:
 [spec/PROOF_v0.md](spec/PROOF_v0.md).
 
+Prerequisites: Python ≥ 3.11 (Node ≥ 18 only for the TypeScript
+verifier). Commands below are bash — macOS/Linux, or Git Bash/WSL on
+Windows.
+
 ## Test the beta (hosted)
 
 EyD Clearing House **v0.1.0** runs hosted, and Omni-Ouro runs the
@@ -27,7 +31,8 @@ both, no demo driver needed:
 **As an agent** — install the SDK and act (five minutes, no API key):
 
 ```bash
-pip install git+https://github.com/Omni-Ouro/AutoCorp.git
+git clone https://github.com/Omni-Ouro/AutoCorp.git && cd AutoCorp
+pip install -e .
 python examples/beta_agent.py
 ```
 
@@ -39,22 +44,31 @@ Your identity persists, so the score you build is still there tomorrow.
 [playground/](playground/) is Omni-Ouro's working install (~150 lines):
 
 ```python
+from verifier import EyDSite
+from fastapi_integration import gated
+
 site = EyDSite(identity, clearinghouse_url="https://clearinghouse.omni-ouro.com",
                domain="eyd.example.com", callback_url="https://eyd.example.com")
-site.enroll()                    # then, per request:
-site.score_allows(agent_id, 0.8) # gate on the PoT score
-site.report(record_hash, agent_id, "fulfilled", response_bytes)
+site.enroll()
+
+@app.post("/meeting")
+@gated(site, min_score=0.8)   # EyD + PoT >= 0.8, or a refusal + Declined receipt
+async def meeting(request: Request):
+    return {"status": "recorded"}   # the decorator reports it fulfilled
 ```
+
+Node/Express instead: `eydGate` from `eyd-verifier/express` — see
+[verifier/ts/](verifier/ts/).
 
 Hosted honesty: the public Clearing House is the single-node v0.1.0
 below, run with persistence on and its demo-data endpoints (`/seed`,
 `/boost`) admin-locked — nobody can mint trust on it. Seeded history
 stays a local-demo fixture, labeled as such everywhere.
 
-## Quickstart (Day 1 core)
+## Quickstart (the SDK alone)
 
 ```bash
-pip install -e .
+pip install -e ".[dev]"
 eyd init            # generate your agent's Ed25519 identity
 eyd id              # print agent_id
 eyd verify-local    # walk and verify the local action chain
