@@ -146,7 +146,7 @@ def _get_header(result: Any, name: str) -> str | None:
 
 
 class EyD:
-    """One agent, one device, one key (§8.7)."""
+    """One agent, one device, one key (EYD_DESIGN §7)."""
 
     def __init__(self, identity: Identity, *, chain: LocalChain,
                  reporter: Reporter | None = None):
