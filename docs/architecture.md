@@ -11,7 +11,7 @@
         (before)   │          │  report  │ │ (cached at the site)
                 ┌──┴──────────▼──┐   ┌───┴────────────┐
                 │  EyD SDK hook  │   │      Site       │
-                │ sign · chain · ├─► │ require_eyd()   │
+                │ sign · chain · ├─► │ @gated / eydGate│
                 │ report         │◄─┤ report outcome  │
                 └─▲──────────────┘   └─────────────────┘
                   │ tool-call path inside the framework
@@ -23,7 +23,7 @@
 
 - Intent is reported **before** execution; outcome after. Site report is
   paired only if the site resolves to the intent's target (replay defence).
-- Classification: Expected (hashes match) · Unexpected · Declined · Unverified.
+- Classification: Expected (hashes match) · Unexpected · Declined · Unverified · Deviated.
 - Local chain is the source of truth; the clearinghouse is the referee.
   Offline actions still chain and queue their reports.
 - The clearinghouse is never in a site's request path: known agents are

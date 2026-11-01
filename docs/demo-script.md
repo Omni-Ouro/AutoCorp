@@ -1,8 +1,7 @@
 # Demo video script (3:00) — summary
 
-Full timing table in [EYD_DESIGN.md](../EYD_DESIGN.md) §7. Shot on Day 7,
-re-shot Day 8 if needed, never Day 9. Record the screen with real deployed
-URLs; no slides except title and diagram. Cut hard at 3:00.
+Record the screen with real deployed URLs; no slides except title and
+diagram. Cut hard at 3:00.
 
 | Time | On screen |
 |---|---|

@@ -2,27 +2,16 @@
 
 **Scope:** Meta Global AI Developer Hackathon, Oct 26 – Nov 4 2026. Submission due Nov 4, 9:00 PM ET (8:00 PM CT).
 **Track:** Startup. **Theme:** Push the Frontier (control of autonomous software systems by verification rather than trust).
-**License:** Apache-2.0 for everything in this repo. The production PoT Clearinghouse service is not in this repo.
+**License:** Apache-2.0 for everything in this repo. The multi-tenant production Clearing House tier is not in this repo; the single-node v0.1.0 that runs the hosted beta is.
 
 ---
 
-## 0. Rules and scoring (what the build is optimized for)
+## 0. Hackathon notes
 
-**Scoring:** Impact 30% · Use of Meta AI Tooling 25% · Demo 25% · Technical Depth and Execution 20%. Startup lens: technical execution and whether it holds up in production. Finalists present live on Nov 9. Startup prizes: $250k / $150k / $75k / $50k / $25k.
-
-**Rules that shape the repo:**
-- **New work only, Oct 26 – Nov 4.** Repo is created public today; first commit is this doc. No code predates it. Prior *planning* is fine; prior *code* is not, and there is none.
-- **Judges must be able to tell what's new.** `README.md` has a "What we built" section listing every component, and a "What we didn't build" section listing every third-party piece: the Meta models and any Meta agent wrapped by EyD, crypto and web libraries, the window toolkit. Commit history starts Oct 26 and is the evidence.
-- **Public repo, one track, solo allowed.** Startup track, one submitter.
-- **3-minute demo video is required and heavily scored.** Section 7 is the script. It's shot on Day 7, re-shot on Day 8 if needed, never Day 9.
-- **Theme fit:** Push the Frontier names Meta models "on hard problems in software"; EyD is a software control problem. Build for Your World also fits (a founder's own domain). Decide the final label when the video is cut; both are honest.
-- **Banned list** (health advice, basic RAG, image analyzers, education chatbots, screeners, coaches, personality or sports analyzers) doesn't touch this.
-
-**What the weights mean for the plan:**
-- *Meta tooling (25%)* lives in the agents, not the clearinghouse. The demo agents run on Meta's current models, and the headline is wrapping a Meta-built agent through `eyd run` with zero modification. Check which Meta agent products and models are on the API today before Day 6.
-- *Demo (25%)* is the judge console on video, deployed, with real URLs on screen, and the judge able to drive it themselves.
-- *Impact (30%)* is narrative: every agent framework, every site fighting bots, one receipt both sides hold. Two slides' worth, in the video and the README.
-- *Production (Startup lens)* means deployed on a droplet during judging with tests, error handling, offline queueing and a fresh-clone quickstart that works.
+- **New work only, Oct 26 – Nov 4, 2026.** Commit history starts Oct 26; no code predates it.
+- **Public repo, Startup track.** Everything in this repo is Apache-2.0.
+- **Attribution** — what we built vs. third-party pieces — lives in [README.md](README.md) ("What we built" / "What we didn't build").
+- The single-node Clearing House in this repo is what runs the hosted beta; the multi-tenant production tier and Eyro governance are Omni-Ouro's and are not in this repo.
 
 ---
 
@@ -40,7 +29,7 @@ EyD is a small library and a small window. The agent framework imports it, and i
 | EyD window (receipt viewer) | yes | |
 | Proof format v0 (records, reports, receipts) | yes | |
 | Verifier / site SDK (attest, report) | yes | |
-| Clearinghouse **reference** (single-node pairing + classification + receipts) | yes, marked reference-only | hosted PoT Clearinghouse: multi-tenant, site webhooks, PoT reports, the data on which sites agents use |
+| Clearing House (single-node pairing + classification + receipts; same code runs locally and as the hosted beta) | yes | hosted PoT Clearinghouse tier: multi-tenant, site webhooks, PoT reports, the data on which sites agents use |
 | Demo site + judge console | yes | |
 | Agent demo (Meta models) | yes | |
 | Any governance or policy over agent actions | | Eyro |
@@ -115,17 +104,17 @@ Single node. Stores hashes, signatures, timestamps, classifications, and the cou
 | Site `declined` | **Declined** |
 | Window closed with only one report | **Unverified** |
 
-A late report upgrades Unverified to a real classification and reissues the receipt. Actions with `target: local` (file writes, code execution, local MCP tools) have no counterparty, are always Unverified, stay in the chain, and never affect the score.
+A late report upgrades Unverified to a real classification and reissues the receipt. Actions with `target: local` (file writes, code execution, local MCP tools) have no counterparty, are Unverified unless Deviated (§3.11), stay in the chain, and don't otherwise affect the score.
 
 **Receipt:** `{record_hash, agent_id, site_id?, classification, agent_hash?, site_hash?, ts, ch_sig}` signed with the clearinghouse key. Sent to both parties. Verifiable offline against the clearinghouse pubkey.
 
 ### 3.6 Verifier / site SDK (`verifier/`)
-Python first, TypeScript if time. Three functions and one middleware:
+Python and TypeScript implementations, cross-verified against each other. The core functions:
 - `verify_attestation(att, nonce) → bool` — signature against the agent's pubkey (from the site's local cache, falling back to the clearinghouse for agents never seen before).
 - `issue_session(agent_id) → token` — short-lived (15 min) token bound to `agent_id`, so attestation happens once per session, not per request. Expired token → re-attest, invisible to the agent.
 - `report(record_hash, agent_id, outcome, result_hash)` — signs and posts the site report. `result_hash` is the hash of the canonical response body *before* transfer encoding, and the site also sends it to the agent as `EyD-Result-Hash` so EyD compares against what the site meant to send, not what gzip or a CDN delivered.
 - `verify_receipt(receipt) → bool` — offline check against clearinghouse pubkey.
-- `require_eyd(handler, min_score=None)` — issues challenge or accepts a session token, verifies attestation, optionally checks PoT score, runs handler, reports outcome with the response hash. On refusal, returns the fixed body in Section 3.10. Two lines for a site developer.
+- Turnkey gates — `@gated` (FastAPI) and `eydGate` (Express) over the functions above: challenge or session, attestation, per-action PoT score check, handler, outcome report with the response hash. On refusal, the fixed bodies in Section 3.10. Two lines for a site developer.
 
 **The site keeps its own copy.** Cached pubkeys for every agent it has admitted, every receipt it has received, and its last-seen score per agent. The clearinghouse is never in the request path; it is the registry and the referee. If it is unreachable, a site keeps admitting agents it already knows (signature check is local) and only agents it has never seen wait. The enterprise dashboard later is a view over this local copy.
 
@@ -138,7 +127,7 @@ One business, three endpoints, each gated independently. The judge controls the 
 | **Submit quote** | `POST /quote` | EyD or Passport required, any score |
 | **Pay** | `POST /pay` | EyD required, PoT score ≥ 0.8 |
 
-Each endpoint uses `require_eyd(min_score=…)` or nothing. Refusals return the fixed body (`PoT score unknown` / `PoT score below threshold`). Admissions perform the action, report to the clearinghouse, and store the receipt. A tamper toggle alters the response after hashing so the next receipt reads Unexpected.
+Each endpoint is gated (`min_score=…`) or open. Refusals return the fixed body (`PoT score unknown` / `PoT score below threshold`). Admissions perform the action, report to the clearinghouse, and store the receipt. A tamper toggle alters the response after hashing so the next receipt reads Unexpected.
 
 ### 3.8 Demo agents (`agent-demo/`)
 One Meta-model agent, four identities. A plain Python tool loop stands in for a framework. The model code is identical across A–C; D adds a hijacking system prompt. The only other differences are whether the tools carry `@eyd.tool` and which key EyD loads.
@@ -250,72 +239,44 @@ Sorted keys, no whitespace, UTF-8. One test vector in the spec so every implemen
 4. Later requests in the session carry `EyD-Session` and `EyD-Record`; no new challenge until the token expires.
 
 ### 4.7 Explicitly out of v0
-Key rotation, revocation, multi-clearinghouse, privacy of agent_id across sites, record content disclosure, dispute resolution on Unexpected. Listed as open items.
+Key rotation, multi-clearinghouse, privacy of agent_id across sites, record content disclosure, dispute resolution on Unexpected. Listed as open items.
 
 ## 5. Repo layout
 ```
 eyd/                 SDK (identity, chain, verbs, tool hook, reporter, cli)
-eyd-ui/              window
-verifier/            python/ ts/
-clearinghouse/   single-node pairing, classification, receipts
+eyd-ui/              window (launcher for eyd/window.py)
+verifier/            python/ ts/ — site SDK, turnkey gates
+clearinghouse/       single-node pairing, classification, receipts, PoT
 demo-site/           one business, three gated endpoints, tamper toggle
+playground/          the business install on Omni-Ouro's domain (hosted beta)
 console/             judge console: agents, gates, boost, ledger
-agent-demo/          Meta-model agent, three keys
+agent-demo/          Meta-model agent behind the console identities
+examples/            beta_agent.py — the agent-side quickstart
+passport-demo/       demo Passport issuer    passport-interop/  AI Passport check
 fixtures/            seeded receipt history for B and C, mock Passport for C
+deploy/              droplet services, Caddyfile, runbook
 spec/PROOF_v0.md     records, reports, receipts, canonicalization, vectors, open items
-docs/                architecture diagram, demo script
+docs/                architecture, demo script
 tests/               chain, vectors, pairing/classification, verifier, end-to-end
-README.md            claim, 30-second demo gif, quickstart, open vs. hosted
+README.md            claim, hosted beta, quickstarts, open vs. hosted
 LICENSE              Apache-2.0
 ```
 
-## 6. Build order and kill point
+## 6. Demo video (3:00)
 
-| Day | Date | Deliverable |
-|---|---|---|
-| 1 | Mon Oct 26 | **Public repo created; this doc is the first commit.** Spec frozen. Identity, canonicalization + vectors, Action Record, local chain, `verify-local`. |
-| 2 | Tue Oct 27 | SDK: decorator, `wrap`, `hook`, verb registration, `eyd run` window attach, intent + agent report (to a stub). Check which Meta models and agent products are on the API; pick the demo model. |
-| 3 | Wed Oct 28 | Clearinghouse-ref: enroll, intents, both reports, pairing, classification, receipts, push, score. **Kill point:** one action goes agent → EyD → intent → tool → agent report → (fake site report) → receipt in the terminal, or stop and return to Eyro. |
-| 4 | Thu Oct 29 | Verifier: attestation, `report`, `verify_receipt`, `require_eyd(min_score)`. Challenge/response in runtime. |
-| 5 | Fri Oct 30 | Demo site: three gated endpoints, tamper toggle. Seed fixture + `seed` command. Judge console: rail, gates, boost, ledger. **Deploy clearinghouse, site and console to a droplet with real URLs.** |
-| 6 | Sat Oct 31 | EyD window: live list, status transitions, receipt detail. Agent demo on Meta models, all three agents driven from the deployed console. |
-| 7 | Sun Nov 1 | Deviation classification, live score with streak penalty and cap, Passport pause/approve (mock), Agent D. Hardening: replay, timestamp window, late reports, offline queue, error paths. End-to-end tests. Wrap a Meta-built agent through `eyd run` if one is available. **Shoot the demo video** (Section 7) once the three console moments run clean. |
-| 8 | Mon Nov 2 | README (What we built / What we didn't build / quickstart / impact), spec, architecture diagram. Re-shoot video if anything changed. TS verifier if time. |
-| 9 | Tue Nov 3 | Buffer. Fresh-clone quickstart on a clean droplet by someone who isn't you, if possible. Submission form filled, video uploaded, repo link checked while logged out. |
-| — | Wed Nov 4 | Submit by 8:00 PM CT. Nothing new after noon. Live-finals pitch outline (3 min) drafted in the afternoon. |
+The shooting script lives in [docs/demo-script.md](docs/demo-script.md):
+the console moments live, a receipt verified offline, real deployed
+URLs on screen. Cut hard at 3:00.
 
-If the window slips, it moves to Day 8 and the terminal output stands in for it in the video. The receipt flow, the deployed sites and the video cannot slip.
-
-## 7. Demo video script (3:00)
-
-| Time | On screen | Voice |
-|---|---|---|
-| 0:00–0:20 | Title. One line: "Agents act on your behalf. Nobody can prove what they did." | The problem: every agent framework ships tools with no provenance, and every site has no way to tell a good agent from a bad one. |
-| 0:20–0:45 | Architecture diagram, 3 boxes: agent → EyD → site, clearinghouse above. | What EyD is: a thin runtime on the agent's device. Model picks verbs, EyD signs every action, reports before it runs, the site reports after, the clearinghouse pairs both and issues a receipt to each side. The agent never knows EyD exists. |
-| 0:45–1:00 | The judge console, deployed URL visible. Three agents on the left, three gated actions, the gate controls. | One real site, three actions, three gates the site owner sets. Three agents: no EyD, EyD with a weak history, EyD plus a Passport with a strong one. |
-| 1:00–2:15 | The three moments, live. | A can search, can't quote, can't pay. Boost A to 1.0 — still refused, no identity to attach it to. B pays when the slider is low, refused when it's raised: Expected, then Declined. Boost B to C's level: Expected. Flip tamper: Unexpected. Then D: a .99 agent with a Passport, told to pay, tries to email, three times. Deviated ×3, score to .75, Passport paused, owner notified. Every receipt landing in the right panel as it happens. |
-| 2:15–2:35 | Receipt detail in the window; `verify_receipt` run offline in a terminal. | A receipt is signed by the clearinghouse and both sides hold it. Verifiable with no network. |
-| 2:35–2:50 | README "What we built." Commit graph from Oct 26. | Built this week: runtime, window, verifier, reference clearinghouse, three sites, spec v0. Agents run on Meta models; [a Meta-built agent] wrapped unmodified. |
-| 2:50–3:00 | Impact line + repo URL. | Every agent, every site, one receipt. Startup track, EyD by Omni-Ouro. |
-
-Record screen with the real deployed URLs. No slides except title and diagram. Cut hard at 3:00.
-
-## 8. Decisions made here, overrule today or never
+## 7. Decisions made here, overrule today or never
 
 1. **Intent before execution.** EyD reports first. Easier pairing, and the hosted clearinghouse sees which sites agents use before the sites do.
 2. **Expected means same bytes.** No semantics in the clearinghouse. Agreement is hash equality on the response.
 3. **Sites are enrolled parties.** A report without a known site key is dropped. Unverified is the honest classification for non-EyD sites, not a half-trusted one.
 4. **Pubkey discovery through the clearinghouse.** It's the gate; the extra round trip is the point.
 5. **Local chain is truth; clearinghouse is referee.** Offline runs still chain; receipts arrive late.
-6. **Clearinghouse-ref is reference-only.** One README line: single-node for local testing; the hosted PoT Clearinghouse is operated by Omni-Ouro.
+6. **One Clearing House codebase.** Single-node; the same code runs locally and as the hosted beta. The multi-tenant tier is Omni-Ouro's, later.
 7. **One agent, one device, one key.**
 8. **Intents name the counterparty.** Hashes for content, domain in the clear for who. It closes header replay and it is the market data.
 9. **Sites hold their own copy.** Clearinghouse is registry and referee, never in the request path. Known agents are admitted even when it is down.
 10. **The agent is never told.** EyD is invisible from inside the agent. The only EyD-shaped thing an agent can ever observe is a refusal citing a PoT score, worded identically everywhere.
-
-## 9. Judging story (Startup track, Frontier theme)
-
-- **Capability given to a machine:** an identity and an action history it cannot forge, and a receipt a counterparty can hold.
-- **Control of a system:** businesses decide which agents touch them by verification, and learn after the fact whether what the agent says happened is what they saw happen.
-- **Holds up in production:** hashes-only central store, Ed25519 throughout, replay protection, offline queueing, receipts verifiable without a network call, fresh-clone quickstart works.
-- **Why now:** agent frameworks are shipping tools with no provenance and sites have no way to tell a good agent from a bad one. The first receipt that both sides hold sets the default.
