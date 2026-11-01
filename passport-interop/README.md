@@ -44,6 +44,6 @@ The responder role is an issuer-side interface and out of scope for the
 clearinghouse; EyD's demo issuer answers by subject only and is checked
 with the runner's live checks (`--role responder --url ...`).
 
-Validated 2026-10-27: verifier 81/81 and caller 74/74 against upstream,
+Validated 2026-11-01: verifier 81/81 and caller 74/74 against upstream,
 and the demo issuer's revocation endpoint passes the suite's live
 responder checks 8/8 (`--role responder --url http://127.0.0.1:8010/revocation`).
