@@ -1,0 +1,42 @@
+{
+  "agent": {
+    "seed_b64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+    "id": "KZDVVJ2UMNDUYAUF35O36K6KW4",
+    "pubkey_b64": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg="
+  },
+  "site": {
+    "seed_b64": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
+    "id": "ET3O22WL7YIATQBQ27FFM7BTZJ",
+    "pubkey_b64": "Kay64UG8yvCyLhqU000LxzYeUm0L/hLIl5S8kyKWbdc="
+  },
+  "attestation": {
+    "agent_id": "KZDVVJ2UMNDUYAUF35O36K6KW4",
+    "nonce": "fixture-nonce",
+    "head_seq": 7,
+    "head_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "ts": "2026-01-01T00:00:00Z",
+    "sig": "ed25519:wZ5bc0LpuSABsS9YmnU1FgCpMeV3vr8I4Kgg2uUo4sv0IZwsL71CMkf3Vak5QAEUXJbTjrn9gosZoWTJjMucDg=="
+  },
+  "attestation_b64": "eyJhZ2VudF9pZCI6ICJLWkRWVkoyVU1ORFVZQVVGMzVPMzZLNktXNCIsICJub25jZSI6ICJmaXh0dXJlLW5vbmNlIiwgImhlYWRfc2VxIjogNywgImhlYWRfaGFzaCI6ICJzaGEyNTY6MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMCIsICJ0cyI6ICIyMDI2LTAxLTAxVDAwOjAwOjAwWiIsICJzaWciOiAiZWQyNTUxOTp3WjViYzBMcHVTQUJzUzlZbW5VMUZnQ3BNZVYzdnI4STRLZ2cydVVvNHN2MElad3NMNzFDTWtmM1ZhazVRQUVVWEpiVGpybjlnb3Nab1dUSmpNdWNEZz09In0=",
+  "site_report": {
+    "record_hash": "sha256:abababababababababababababababababababababababababababababababab",
+    "agent_id": "KZDVVJ2UMNDUYAUF35O36K6KW4",
+    "site_id": "ET3O22WL7YIATQBQ27FFM7BTZJ",
+    "outcome": "fulfilled",
+    "result_hash": "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+    "ts": "2026-01-01T00:00:00Z",
+    "sig": "ed25519:SgV/myZ7fryj7Mzrml/r+fLaz880Z2kJ908dFs4xLcxyLVwRk1cKoW6CCSFgXl/MZNuBQ3bX7LlCZllvW2Z5BQ=="
+  },
+  "receipt": {
+    "record_hash": "sha256:abababababababababababababababababababababababababababababababab",
+    "agent_id": "KZDVVJ2UMNDUYAUF35O36K6KW4",
+    "site_id": "ET3O22WL7YIATQBQ27FFM7BTZJ",
+    "classification": "Expected",
+    "verb": "send",
+    "tool": "fixture",
+    "target": "example.com",
+    "ts": "2026-01-01T00:00:00Z",
+    "ch_sig": "ed25519:x1sfvp9nIK3aoqa84ZBcBomJYnwDqGKuDLWGkUfWEFplEpesys/Lbsixtqg/8srgs7jhwPa7oyJwCJovhEWdDQ=="
+  },
+  "ch_pubkey_b64": "JUO5L/EJVRFHatyDadtt3JM2ZaEZeN2hQE7hBmypVZ0="
+}

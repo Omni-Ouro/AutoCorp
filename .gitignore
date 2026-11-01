@@ -13,6 +13,7 @@ state/
 .eyd/
 *.jsonl
 node_modules/
+verifier/ts/dist/
 dist/
 .env
 # Local credentials — never commit (Baseten key for the hackathon)

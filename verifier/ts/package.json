@@ -1,0 +1,21 @@
+{
+  "name": "eyd-verifier",
+  "version": "0.1.0",
+  "description": "EyD verifier / site SDK (TypeScript) — attestation, sessions, PoT score gating, Proof Receipt reporting. Mirrors verifier/python.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepare": "tsc",
+    "test": "npm run build && node --test \"test/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  }
+}
