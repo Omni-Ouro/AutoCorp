@@ -59,7 +59,8 @@ def _pair(agent: Identity, site: Identity, rh: str, *, match=None):
 def test_expectation_registered_bound_and_attested(monkeypatch):
     monkeypatch.setattr(
         ch, "generate_expectation",
-        lambda **kw: {"sketch": SKETCH, "model": "test-model"})
+        lambda **kw: {"sketch": SKETCH, "model": "test-model",
+                      "category": "payment"})
     agent, site = Identity.generate(), Identity.generate(kind="site")
     _enroll(agent, "agent")
     _enroll(site, "site", domain="example.com")
@@ -71,7 +72,8 @@ def test_expectation_registered_bound_and_attested(monkeypatch):
 
     receipt = _pair(agent, site, rh, match=False)
     assert receipt["classification"] == "Expected"  # vector two never classifies
-    assert receipt["expectation"] == {"model": "test-model", "sketch": SKETCH}
+    assert receipt["expectation"] == {"model": "test-model", "sketch": SKETCH,
+                                      "category": "payment"}
     assert receipt["expectation_match"] is False  # advisory annotation only
 
     score = client.get(f"/agents/{agent.id}/score").json()
@@ -148,4 +150,17 @@ def test_openai_gateway_shape(monkeypatch):
         verb="send", tool="send_thing", target="example.com")
     assert seen["url"].endswith("/chat/completions")
     assert out == {"sketch": "A confirmation that the thing was sent.",
-                   "model": "meta-models/test"}
+                   "model": "meta-models/test", "category": "unknown"}
+
+
+def test_parse_reply_categories():
+    assert exp_mod._parse_reply(
+        "category: payment\nA proof of payment.") == ("payment", "A proof of payment.")
+    # A slug outside the taxonomy is the model's own escape hatch.
+    assert exp_mod._parse_reply(
+        "category: banana\nSome outcome.") == ("other", "Some outcome.")
+    # No category line: the whole reply is the sketch, category unknown —
+    # the bucket a future decision model hands off to a reasoning model.
+    assert exp_mod._parse_reply(
+        "Just a sentence.") == ("unknown", "Just a sentence.")
+    assert exp_mod._parse_reply("category: listing\n")[0] == "unknown"

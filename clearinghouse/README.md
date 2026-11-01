@@ -12,12 +12,16 @@ counterparty of each action. Never inputs, outputs, or tool arguments.
 With a model gateway configured, each intent also gets a pre-registered
 one-sentence sketch of what a successful result should look like,
 generated from the declared action alone (verb, tool, target) — never
-arguments, never result content. The sketch is bound into the signed
+arguments, never result content — and labeled with a category from a
+fixed taxonomy. The sketch is bound into the signed
 receipt, and the site may attest in its signed report whether its
 result matched (`expectation_match`). Advisory only: it never changes
 a classification or the PoT score, and any failure yields no
 expectation and never blocks an intent. Sites read the sketch at
-`GET /expectations/{record_hash}`.
+`GET /expectations/{record_hash}`. The category labels make the
+accumulated store training data for a future cheap local decision
+model behind the same interface; `other`/`unknown` are its handoff
+back to a reasoning model for genuinely new action shapes.
 
 Env: `MODEL_GATEWAY_URL` + `MODEL_GATEWAY_TOKEN` enable the vector
 (`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` accepted as fallbacks).

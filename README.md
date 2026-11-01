@@ -91,12 +91,14 @@ pytest              # canonicalization vectors, records, chain
 - **Model expectation (vector two, advisory)** — at intent time the
   Clearing House asks a model, from the declared action alone (verb,
   tool, target — never arguments, never result content), what a
-  successful result should look like, and pre-registers that sketch
+  successful result should look like, labeled with a category from a
+  fixed taxonomy, and pre-registers that sketch
   against the record. It is bound into the signed receipt; the site
   attests, in its signed report, whether its result matched. It never
   changes a classification or score — it is evidence, not a referee —
-  and over time the accumulated sketches form a per-site corpus of
-  expected action shapes.
+  and over time the accumulated, category-labeled sketches form a
+  per-site corpus of expected action shapes: training data for a cheap
+  local decision model to eventually take over the labeling.
 - **Verifier / site SDK** (`verifier/python/`, `verifier/ts/`) — attestation, sessions,
   reporting, offline `verify_receipt`, site score gating. Python and TypeScript
   implementations with cross-compatible keys and signatures; turnkey gates for

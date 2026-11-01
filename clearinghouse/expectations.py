@@ -15,6 +15,15 @@ Advisory by construction: an expectation never changes a
 classification or the PoT score. It is evidence, not a referee — a
 pre-registered prediction a mismatch can be measured against.
 
+Each expectation also carries a category from a fixed taxonomy, so
+the accumulated store is labeled training data: (verb, tool, target)
+-> category, beside the site's attested outcome. That is what lets a
+cheap local decision model eventually replace the gateway model
+behind this same interface. The taxonomy reserves `other` (no fit)
+and `unknown` (no signal): the decision model's handoff — genuinely
+new action shapes route back to a reasoning model, whose labeled
+output becomes more training data.
+
 Enabled when MODEL_GATEWAY_URL and MODEL_GATEWAY_TOKEN are set (a
 Meta model gateway; ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN are
 accepted as fallbacks). MODEL_GATEWAY_FORMAT picks the API shape:
@@ -34,14 +43,22 @@ import os
 import sys
 import urllib.request
 
+TAXONOMY = ("payment", "confirmation", "listing", "record", "document",
+            "computation", "other")
+
 _SYSTEM = (
     "You are the expectation service of the EyD Clearing House. Given a "
-    "declared agent action, write ONE sentence describing what a "
-    "successful result of that action should look like: the category "
-    "and shape of the outcome only. Never invent specific values "
-    "(amounts, names, ids, dates). Base the expectation on the task "
-    "verb when one is given — that is what was asked for — otherwise "
-    "on the action verb. Reply with the sentence only."
+    "declared agent action, state what a successful result should look "
+    "like. Reply with exactly two lines. First line: `category: X` "
+    "where X is one of: payment (money moved, with proof), confirmation "
+    "(a request or message was sent or accepted), listing (a collection "
+    "of items to browse), record (a single structured entity created or "
+    "returned), document (document or file content), computation (a "
+    "computed value or answer), other (none of these fit). Second line: "
+    "ONE sentence describing the shape of the expected outcome only. "
+    "Never invent specific values (amounts, names, ids, dates). Base "
+    "the expectation on the task verb when one is given — that is what "
+    "was asked for — otherwise on the action verb."
 )
 
 
@@ -105,6 +122,20 @@ def _call_gateway(model: str, prompt: str) -> str:
                    if b.get("type") == "text").strip()
 
 
+def _parse_reply(text: str) -> tuple[str, str]:
+    """Split a `category: X` + sentence reply into (category, sketch).
+    A slug outside the taxonomy normalizes to `other`; an unparseable
+    reply keeps the whole text as the sketch with category `unknown`
+    — the no-signal bucket a decision model hands off from."""
+    lines = [line for line in text.splitlines() if line.strip()]
+    if lines and lines[0].lower().startswith("category:"):
+        slug = lines[0].split(":", 1)[1].strip().lower()
+        sketch = " ".join(line.strip() for line in lines[1:]).strip()
+        if sketch:
+            return (slug if slug in TAXONOMY else "other"), sketch
+    return "unknown", text
+
+
 def generate_expectation(*, verb: str, tool: str, target: str,
                          task_verb: str | None = None) -> dict | None:
     """One model call from the declared action alone. None on any
@@ -126,5 +157,7 @@ def generate_expectation(*, verb: str, tool: str, target: str,
             print(f"expectations: model call failed: {e}", file=sys.stderr)
             continue
         if text:
-            return {"sketch": text[:300], "model": model}
+            category, sketch = _parse_reply(text)
+            return {"sketch": sketch[:300], "model": model,
+                    "category": category}
     return None

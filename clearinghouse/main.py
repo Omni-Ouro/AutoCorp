@@ -271,7 +271,8 @@ def issue_receipt(record_hash_: str) -> dict | None:
     # signed receipt. Annotation only — classification is already set.
     exp = expectation_store.get(record_hash_)
     if exp is not None:
-        receipt["expectation"] = {"model": exp["model"], "sketch": exp["sketch"]}
+        receipt["expectation"] = {"model": exp["model"], "sketch": exp["sketch"],
+                                  "category": exp.get("category", "unknown")}
     if agent_rep is not None:
         receipt["agent_hash"] = agent_rep.get("output_hash")
     receipts[record_hash_] = receipt

@@ -47,7 +47,7 @@ public keys are base64 of the 32-byte raw Ed25519 key.
 
 `{record_hash, agent_id, site_id, classification, agent_hash, site_hash, ts, ch_sig}` — `site_id`/`site_hash` absent when Unverified. `ch_sig` signs the canonical-hash of the unsigned receipt. Verifiable offline against the clearinghouse pubkey.
 
-Optional vector-two fields (§3.12): `expectation: {model, sketch}` — the pre-registered model expectation for the action; `expectation_match: bool` — the site's attestation (carried in its signed report) that its result matched the sketch. Advisory only: neither field affects classification or the PoT score.
+Optional vector-two fields (§3.12): `expectation: {model, sketch, category}` — the pre-registered model expectation for the action (category from the fixed taxonomy in §3.12); `expectation_match: bool` — the site's attestation (carried in its signed report) that its result matched the sketch. Advisory only: neither field affects classification or the PoT score.
 
 ## Classification
 
