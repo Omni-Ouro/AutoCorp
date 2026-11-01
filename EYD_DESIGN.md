@@ -256,7 +256,7 @@ passport-demo/       demo Passport issuer    passport-interop/  AI Passport chec
 fixtures/            seeded receipt history for B and C, mock Passport for C
 deploy/              droplet services, Caddyfile, runbook
 spec/PROOF_v0.md     records, reports, receipts, canonicalization, vectors, open items
-docs/                architecture, demo script
+docs/                architecture
 tests/               chain, vectors, pairing/classification, verifier, end-to-end
 README.md            claim, hosted beta, quickstarts, open vs. hosted
 LICENSE              Apache-2.0
@@ -264,9 +264,8 @@ LICENSE              Apache-2.0
 
 ## 6. Demo video (3:00)
 
-The shooting script lives in [docs/demo-script.md](docs/demo-script.md):
-the console moments live, a receipt verified offline, real deployed
-URLs on screen. Cut hard at 3:00.
+Three minutes: the console moments live, a receipt verified offline,
+real deployed URLs on screen. Cut hard at 3:00.
 
 ## 7. Decisions made here, overrule today or never
 
