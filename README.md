@@ -73,8 +73,10 @@ pytest              # canonicalization vectors, records, chain
 - **AI Passport interoperability** (`passport-interop/`, [AI_PASSPORT.md](AI_PASSPORT.md)) — the clearinghouse also reads ServiceNow AI Passports as an identity credential alongside EyD (Passport alone never suffices by default; Passport + EyD is the combined tier). ServiceNow's published test vectors pass against our check unmodified: verifier 81/81, caller 74/74.
 - **Clearinghouse reference** (`clearinghouse-ref/`) — single-node pairing,
   classification, receipts, PoT score, fork detection. *(reference only — see below)*
-- **Verifier / site SDK** (`verifier/python/`) — attestation, sessions,
-  reporting, offline `verify_receipt`, site score gating.
+- **Verifier / site SDK** (`verifier/python/`, `verifier/ts/`) — attestation, sessions,
+  reporting, offline `verify_receipt`, site score gating. Python and TypeScript
+  implementations with cross-compatible keys and signatures; turnkey gates for
+  FastAPI (`@gated`) and Express (`eydGate`).
 - **Demo site** (`demo-site/`) — one business, three independently gated
   actions (search / quote / pay), runtime gate controls, tamper toggle.
 - **Judge console** (`console/`) — the demo page: pick an agent, set the

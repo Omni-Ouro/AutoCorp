@@ -6,6 +6,10 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./express": { "types": "./dist/express.d.ts", "import": "./dist/express.js" }
+  },
   "files": [
     "dist"
   ],

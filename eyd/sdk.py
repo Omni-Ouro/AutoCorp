@@ -232,6 +232,34 @@ class EyD:
 
         return _ctx()
 
+    # -- turnkey HTTP for tool bodies --------------------------------------
+    def http(self, method: str, url: str, *, json_body=None, data: bytes | None = None,
+             headers: dict | None = None, timeout: float = 15) -> ToolResult:
+        """HTTP call with the EyD headers already attached.
+
+        Inside an `@eyd.tool` function, `return eyd.http("POST", url, {...})`
+        is the whole transport: the in-flight Action Record's headers
+        (EyD-Agent / EyD-Record / EyD-Session / EyD-Attestation) ride
+        along via current_headers(), and the ToolResult plugs straight
+        into the SDK's receipt flow — no hand-wired headers.
+        """
+        import urllib.error
+        import urllib.request
+
+        hdrs = dict(headers or {})
+        body = data
+        if json_body is not None:
+            body = json.dumps(json_body).encode()
+            hdrs.setdefault("Content-Type", "application/json")
+        hdrs.update(current_headers())
+        req = urllib.request.Request(url, data=body, method=method.upper(),
+                                     headers=hdrs)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return ToolResult(r.status, r.read().decode(), dict(r.headers))
+        except urllib.error.HTTPError as e:
+            return ToolResult(e.code, e.read().decode(), dict(e.headers))
+
     # -- the hook itself (§3.1 per-call flow) ------------------------------
     def _invoke(self, fn, tool_name, verb, target_spec, args, kwargs):
         target = _target_for(args, kwargs, target_spec)

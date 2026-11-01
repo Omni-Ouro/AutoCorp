@@ -24,29 +24,15 @@ import argparse
 import json
 import sys
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # clone-friendly
 
-from eyd import current_headers  # noqa: E402
 from eyd.canonical import record_hash
 from eyd.identity import Identity
 from eyd.reporter import Reporter, request_json
-from eyd.sdk import EyD, ToolResult
-
-
-def http(method: str, url: str, payload: dict | None = None) -> ToolResult:
-    headers = {"Content-Type": "application/json", **current_headers()}
-    data = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(url, data=data, method=method, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return ToolResult(r.status, r.read().decode(), dict(r.headers))
-    except urllib.error.HTTPError as e:
-        return ToolResult(e.code, e.read().decode(), dict(e.headers))
+from eyd.sdk import EyD
 
 
 def main() -> int:
@@ -76,16 +62,16 @@ def main() -> int:
           f"clearinghouse {args.clearinghouse}\n")
 
     @eyd.tool(verb="browse", target=host)
-    def search_products(query: str) -> ToolResult:
-        return http("GET", f"{args.site}/search?" + urllib.parse.urlencode({"q": query}))
+    def search_products(query: str):
+        return eyd.http("GET", f"{args.site}/search?" + urllib.parse.urlencode({"q": query}))
 
     @eyd.tool(verb="send", target=host)
-    def request_pitch_deck(topic: str) -> ToolResult:
-        return http("POST", f"{args.site}/deck", {"topic": topic})
+    def request_pitch_deck(topic: str):
+        return eyd.http("POST", f"{args.site}/deck", json_body={"topic": topic})
 
     @eyd.tool(verb="send", target=host)
-    def request_meeting(topic: str) -> ToolResult:
-        return http("POST", f"{args.site}/meeting", {"topic": topic})
+    def request_meeting(topic: str):
+        return eyd.http("POST", f"{args.site}/meeting", json_body={"topic": topic})
 
     def receipt() -> dict | None:
         lines = [x for x in chain_path.read_text().splitlines() if x.strip()]
