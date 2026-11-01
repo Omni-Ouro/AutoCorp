@@ -2,7 +2,7 @@
 
 A Passport the demo issuer signs must verify (accept) bound to the
 agent's EyD identity, and deny once revoked. Uses the real verifier
-(clearinghouse-ref/passport.py), not the vendored vectors.
+(clearinghouse/passport.py), not the vendored vectors.
 """
 import sys
 from datetime import datetime, timezone
@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "clearinghouse-ref"))
+sys.path.insert(0, str(ROOT / "clearinghouse"))
 sys.path.insert(0, str(ROOT / "passport-demo"))
 
 import passport as pp  # noqa: E402

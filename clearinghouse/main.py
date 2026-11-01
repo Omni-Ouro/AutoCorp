@@ -1,9 +1,9 @@
-"""Clearinghouse reference — single node (PROOF v0 §3.5).
+"""EyD Clearing House — single node, v0.1.0 (PROOF v0 §3.5).
 
 Stores hashes, signatures, timestamps, classifications, and the
 counterparty of each action. Never inputs, outputs, or tool arguments.
 
-Run from repo root:  uvicorn main:app --app-dir clearinghouse-ref --port 8787
+Run from repo root:  uvicorn main:app --app-dir clearinghouse --port 8787
 """
 from __future__ import annotations
 

@@ -12,7 +12,7 @@ from eyd.canonical import record_hash  # noqa: E402
 from eyd.identity import Identity  # noqa: E402
 from eyd.records import utc_now  # noqa: E402
 
-CH_MAIN = ROOT / "clearinghouse-ref" / "main.py"
+CH_MAIN = ROOT / "clearinghouse" / "main.py"
 
 
 def _load(name: str, monkeypatch, tmp_path: Path, token: str | None):

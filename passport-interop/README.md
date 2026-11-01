@@ -3,7 +3,7 @@
 EyD interoperates with AI Passport: the PoT Clearinghouse reads Passports
 as an identity credential alongside EyD's own action records (see
 [AI_PASSPORT.md](../AI_PASSPORT.md) for the acceptance policy). This folder
-holds the evidence that our Passport check — [clearinghouse-ref/passport.py](../clearinghouse-ref/passport.py) —
+holds the evidence that our Passport check — [clearinghouse/passport.py](../clearinghouse/passport.py) —
 implements the spec as written by its authors: we run ServiceNow's own
 published test vectors against it, unmodified.
 

@@ -82,7 +82,7 @@ The shared canonical form is not a coincidence to note in passing: Eyro as a who
 
 Items 1–4 are built, not planned:
 
-- Clearinghouse: `POST /agents/{id}/passport` runs the full gateway check (fetch-on-refetch, ES256/JWKS signature verification, currency, binding matched to the agent's EyD identity, live revocation, fail-closed) and `GET /agents/{id}/standing` reports PoT score and Passport standing together ([clearinghouse-ref/passport.py](clearinghouse-ref/passport.py)).
+- Clearinghouse: `POST /agents/{id}/passport` runs the full gateway check (fetch-on-refetch, ES256/JWKS signature verification, currency, binding matched to the agent's EyD identity, live revocation, fail-closed) and `GET /agents/{id}/standing` reports PoT score and Passport standing together ([clearinghouse/passport.py](clearinghouse/passport.py)).
 - Refusals at the combined tier cite `AI Passport required` / `AI Passport revoked`, alongside the PoT reasons.
 - ServiceNow's published vectors pass against our check, unmodified: verifier 81/81, caller 74/74, and the demo issuer's revocation endpoint passes the suite's live responder checks 8/8 ([passport-interop/](passport-interop/README.md)).
 - The demo site checks C's presented Passport at attestation; a revoked Passport is refused there and classified Declined. Revocation doesn't wait for session expiry: the issuer pushes a signed notice to the clearinghouse, which pushes it to the site, which drops the agent's sessions (`POST /passport/revocations`, `POST /revocation-notice`).

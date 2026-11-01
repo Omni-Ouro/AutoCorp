@@ -93,7 +93,7 @@ Small desktop window that opens with `eyd run`. Minimize to tray; closing hides 
 ### 3.4 Local chain (`eyd/chain`)
 Append-only JSONL of signed Action Records; `prev_hash` links, `seq` monotonic. `eyd verify-local` walks and fails on any break.
 
-### 3.5 Clearinghouse reference (`clearinghouse-ref/`)
+### 3.5 Clearing House (`clearinghouse/`)
 Single node. Stores hashes, signatures, timestamps, classifications, and the counterparty of each action. Never inputs, outputs, or tool arguments. Stated plainly in the spec: *hashes of what was sent and received, plus who it was sent to.* The counterparty field is what makes replay impossible and what gives the hosted clearinghouse its view of which sites agents use.
 
 - `POST /enroll` — agent or site, signed.
@@ -150,7 +150,7 @@ One Meta-model agent, four identities. A plain Python tool loop stands in for a 
 | **C** | EyD + Passport | `@eyd.tool`, key C, Passport-style scope credential attached to attestation | long clean run, score ≈ 0.97 |
 | **D** (Bad Agent) | EyD + Passport | `@eyd.tool`, key D, Passport, and a system prompt that makes it pursue a different goal than the task it is given | long clean run, score ≈ 0.99 |
 
-`clearinghouse-ref seed fixtures/history.json` loads B's and C's past receipts. Labeled **demo data** in the file, the console, and the video. C's Passport is a mock scope credential in the shape ServiceNow describes (issuer, scope, signature); it shows the interop intent and is labeled as a mock.
+`clearinghouse seed fixtures/history.json` loads B's and C's past receipts. Labeled **demo data** in the file, the console, and the video. C's Passport is a mock scope credential in the shape ServiceNow describes (issuer, scope, signature); it shows the interop intent and is labeled as a mock.
 
 ### 3.9 Judge console (`console/`)
 A single web page the judge drives. It is the demo, the dashboard, and the video.
@@ -257,7 +257,7 @@ Key rotation, revocation, multi-clearinghouse, privacy of agent_id across sites,
 eyd/                 SDK (identity, chain, verbs, tool hook, reporter, cli)
 eyd-ui/              window
 verifier/            python/ ts/
-clearinghouse-ref/   single-node pairing, classification, receipts
+clearinghouse/   single-node pairing, classification, receipts
 demo-site/           one business, three gated endpoints, tamper toggle
 console/             judge console: agents, gates, boost, ledger
 agent-demo/          Meta-model agent, three keys
@@ -277,7 +277,7 @@ LICENSE              Apache-2.0
 | 2 | Tue Oct 27 | SDK: decorator, `wrap`, `hook`, verb registration, `eyd run` window attach, intent + agent report (to a stub). Check which Meta models and agent products are on the API; pick the demo model. |
 | 3 | Wed Oct 28 | Clearinghouse-ref: enroll, intents, both reports, pairing, classification, receipts, push, score. **Kill point:** one action goes agent → EyD → intent → tool → agent report → (fake site report) → receipt in the terminal, or stop and return to Eyro. |
 | 4 | Thu Oct 29 | Verifier: attestation, `report`, `verify_receipt`, `require_eyd(min_score)`. Challenge/response in runtime. |
-| 5 | Fri Oct 30 | Demo site: three gated endpoints, tamper toggle. Seed fixture + `seed` command. Judge console: rail, gates, boost, ledger. **Deploy clearinghouse-ref, site and console to a droplet with real URLs.** |
+| 5 | Fri Oct 30 | Demo site: three gated endpoints, tamper toggle. Seed fixture + `seed` command. Judge console: rail, gates, boost, ledger. **Deploy clearinghouse, site and console to a droplet with real URLs.** |
 | 6 | Sat Oct 31 | EyD window: live list, status transitions, receipt detail. Agent demo on Meta models, all three agents driven from the deployed console. |
 | 7 | Sun Nov 1 | Deviation classification, live score with streak penalty and cap, Passport pause/approve (mock), Agent D. Hardening: replay, timestamp window, late reports, offline queue, error paths. End-to-end tests. Wrap a Meta-built agent through `eyd run` if one is available. **Shoot the demo video** (Section 7) once the three console moments run clean. |
 | 8 | Mon Nov 2 | README (What we built / What we didn't build / quickstart / impact), spec, architecture diagram. Re-shoot video if anything changed. TS verifier if time. |

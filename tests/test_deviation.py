@@ -5,11 +5,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "clearinghouse-ref"))
+sys.path.insert(0, str(ROOT / "clearinghouse"))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-import main as ch  # noqa: E402  clearinghouse-ref/main.py
+import main as ch  # noqa: E402  clearinghouse/main.py
 from classify import DEVIATED, EXPECTED, compute_score  # noqa: E402
 from eyd.canonical import record_hash  # noqa: E402
 from eyd.identity import Identity  # noqa: E402

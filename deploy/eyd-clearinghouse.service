@@ -6,7 +6,7 @@ After=network.target
 User=eyd
 WorkingDirectory=/opt/eyd
 EnvironmentFile=/opt/eyd/eyd.env
-ExecStart=/opt/eyd/.venv/bin/python clearinghouse-ref/main.py
+ExecStart=/opt/eyd/.venv/bin/python clearinghouse/main.py
 Restart=on-failure
 RestartSec=3
 
