@@ -47,7 +47,12 @@ class HttpResult:
 
 def call_model(messages: list[dict], tool: dict | None = None, *,
                tools: list[dict] | None = None, system: str | None = None) -> dict:
-    base = os.environ["ANTHROPIC_BASE_URL"].rstrip("/")
+    # The Meta model gateway (ANTHROPIC_* names accepted as fallback —
+    # the gateway speaks that API shape).
+    base = (os.environ.get("MODEL_GATEWAY_URL")
+            or os.environ["ANTHROPIC_BASE_URL"]).rstrip("/")
+    token = (os.environ.get("MODEL_GATEWAY_TOKEN")
+             or os.environ.get("ANTHROPIC_AUTH_TOKEN", ""))
     payload = {"model": os.environ.get("ANTHROPIC_MODEL", "muse-wonder-1.0"),
                "max_tokens": 4096, "tools": tools or [tool or TOOL_SCHEMA],
                "messages": messages}
@@ -56,8 +61,8 @@ def call_model(messages: list[dict], tool: dict | None = None, *,
     req = urllib.request.Request(
         base + "/v1/messages", data=json.dumps(payload).encode(), method="POST",
         headers={"Content-Type": "application/json",
-                 "x-api-key": os.environ.get("ANTHROPIC_AUTH_TOKEN", ""),
-                 "Authorization": f"Bearer {os.environ.get('ANTHROPIC_AUTH_TOKEN', '')}",
+                 "x-api-key": token,
+                 "Authorization": f"Bearer {token}",
                  "anthropic-version": "2023-06-01"})
     with DIRECT.open(req, timeout=60) as r:
         return json.loads(r.read())

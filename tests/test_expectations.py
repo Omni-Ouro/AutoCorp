@@ -91,8 +91,20 @@ def test_no_expectation_when_vector_disabled(monkeypatch):
 
 
 def test_generate_returns_none_without_gateway(monkeypatch):
+    monkeypatch.delenv("MODEL_GATEWAY_URL", raising=False)
+    monkeypatch.delenv("MODEL_GATEWAY_TOKEN", raising=False)
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     monkeypatch.delenv("EXPECTATIONS", raising=False)
     assert exp_mod.generate_expectation(
         verb="pay", tool="pay_invoice", target="example.com") is None
+
+
+def test_gateway_names_are_meta_neutral(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.setenv("MODEL_GATEWAY_URL", "http://127.0.0.1:9")
+    monkeypatch.setenv("MODEL_GATEWAY_TOKEN", "x")
+    assert exp_mod.model_name() is not None
+    monkeypatch.setenv("EXPECTATIONS", "off")
+    assert exp_mod.model_name() is None

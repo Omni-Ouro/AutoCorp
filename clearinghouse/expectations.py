@@ -15,9 +15,10 @@ Advisory by construction: an expectation never changes a
 classification or the PoT score. It is evidence, not a referee — a
 pre-registered prediction a mismatch can be measured against.
 
-Enabled when ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN are set (the
-model gateway). Model: EXPECTATION_MODEL, else ANTHROPIC_MODEL, else
-the demo default. EXPECTATION_VERBS (comma list) restricts which
+Enabled when MODEL_GATEWAY_URL and MODEL_GATEWAY_TOKEN are set (the
+Meta model gateway; ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN are
+accepted as fallbacks — the gateway speaks that API shape). Model:
+EXPECTATION_MODEL, else ANTHROPIC_MODEL, else the demo default. EXPECTATION_VERBS (comma list) restricts which
 verbs get sketches; unset means all. Any failure — no gateway,
 timeout, bad reply — yields no expectation and never blocks an intent.
 This module is the registry point for future vectors: each produces
@@ -41,11 +42,20 @@ _SYSTEM = (
 )
 
 
+def _gateway_url() -> str | None:
+    return (os.environ.get("MODEL_GATEWAY_URL")
+            or os.environ.get("ANTHROPIC_BASE_URL"))
+
+
+def _gateway_token() -> str | None:
+    return (os.environ.get("MODEL_GATEWAY_TOKEN")
+            or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+
+
 def model_name() -> str | None:
     if os.environ.get("EXPECTATIONS", "").lower() == "off":
         return None
-    if not (os.environ.get("ANTHROPIC_BASE_URL")
-            and os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+    if not (_gateway_url() and _gateway_token()):
         return None
     return (os.environ.get("EXPECTATION_MODEL")
             or os.environ.get("ANTHROPIC_MODEL") or "muse-wonder-1.0")
@@ -74,9 +84,9 @@ def generate_expectation(*, verb: str, tool: str, target: str,
     # one-sentence reply; 300 starved it and yielded empty text.
     payload = {"model": model, "max_tokens": 1024, "system": _SYSTEM,
                "messages": [{"role": "user", "content": "\n".join(lines)}]}
-    token = os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+    token = _gateway_token() or ""
     req = urllib.request.Request(
-        os.environ["ANTHROPIC_BASE_URL"].rstrip("/") + "/v1/messages",
+        (_gateway_url() or "").rstrip("/") + "/v1/messages",
         data=json.dumps(payload).encode(), method="POST",
         headers={"Content-Type": "application/json",
                  "x-api-key": token,

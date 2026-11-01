@@ -5,8 +5,9 @@
 # The issuer, clearinghouse and demo site stay on localhost — the
 # console reaches them server-side, so a browser only ever talks
 # to the console port.
-# Needs in the environment: ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN
-# (ANTHROPIC_MODEL optional) for the console's model calls.
+# Needs in the environment: MODEL_GATEWAY_URL, MODEL_GATEWAY_TOKEN
+# for the console's model calls (ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN
+# / ANTHROPIC_MODEL accepted as fallbacks).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p logs

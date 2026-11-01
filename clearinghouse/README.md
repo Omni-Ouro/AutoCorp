@@ -19,9 +19,10 @@ a classification or the PoT score, and any failure yields no
 expectation and never blocks an intent. Sites read the sketch at
 `GET /expectations/{record_hash}`.
 
-Env: `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` enable the vector
-(model: `EXPECTATION_MODEL`, else `ANTHROPIC_MODEL`, else
-`muse-wonder-1.0`); `EXPECTATION_VERBS` optionally restricts which
+Env: `MODEL_GATEWAY_URL` + `MODEL_GATEWAY_TOKEN` enable the vector
+(the Meta model gateway; `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`
+accepted as fallbacks). Model: `EXPECTATION_MODEL`, else
+`ANTHROPIC_MODEL`, else `muse-wonder-1.0`; `EXPECTATION_VERBS` optionally restricts which
 verbs get sketches; `EXPECTATIONS=off` disables it. Sketches persist
 with the rest of the store — over time they accumulate into a
 per-site/tool corpus of expected action shapes.
