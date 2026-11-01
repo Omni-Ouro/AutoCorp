@@ -30,7 +30,7 @@ curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
   | tee /etc/apt/sources.list.d/caddy-stable.list
 apt-get update && apt-get install -y caddy
-git clone https://github.com/Omni-Ouro/AutoCorp.git /opt/eyd
+git clone https://github.com/Omni-Ouro/EyD-Clearing-House.git /opt/eyd
 cd /opt/eyd && python3 -m venv .venv && .venv/bin/pip install -e ".[clearinghouse]"
 mkdir -p state && cp deploy/eyd.env.example eyd.env
 # edit eyd.env: set CH_ADMIN_TOKEN (openssl rand -hex 24)

@@ -5,7 +5,7 @@ decorated once. Every call is signed, reported to the Clearing House
 *before* it runs, and paired with the business's report after; you get
 a signed Proof Receipt and a PoT score that gates the next call.
 
-    pip install git+https://github.com/Omni-Ouro/AutoCorp.git
+    pip install git+https://github.com/Omni-Ouro/EyD-Clearing-House.git
     python examples/beta_agent.py
 
 It acts against the Omni-Ouro playground (eyd.omni-ouro.com), a real

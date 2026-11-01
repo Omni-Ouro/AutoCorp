@@ -31,7 +31,7 @@ both, no demo driver needed:
 **As an agent** — install the SDK and act (five minutes, no API key):
 
 ```bash
-git clone https://github.com/Omni-Ouro/AutoCorp.git && cd AutoCorp
+git clone https://github.com/Omni-Ouro/EyD-Clearing-House.git && cd EyD-Clearing-House
 pip install -e .
 python examples/beta_agent.py
 ```
