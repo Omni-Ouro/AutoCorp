@@ -28,11 +28,17 @@ python ../ai-passport/conformance/run.py --role caller \
     --adapter "python passport-interop/adapter.py" --name "EyD clearinghouse"
 ```
 
-The same vectors also run in-repo, without the upstream checkout:
+The verifier vectors (81) and the caller-side revocation vectors
+(41 of the 74 revocation cases) also run in-repo, without the
+upstream checkout:
 
 ```bash
 python -m pytest tests/test_passport_interop.py
 ```
+
+The remaining 33 revocation cases are responder-side — the issuer
+interface, out of scope for the clearinghouse; EyD's demo issuer is
+checked with the runner's live responder checks instead (below).
 
 The responder role is an issuer-side interface and out of scope for the
 clearinghouse; EyD's demo issuer answers by subject only and is checked

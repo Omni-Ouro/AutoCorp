@@ -18,7 +18,8 @@ Sites that gate on EyD only admit agents that do.
 
 Built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026),
 Startup track. Design doc: [EYD_DESIGN.md](EYD_DESIGN.md). Proof format:
-[spec/PROOF_v0.md](spec/PROOF_v0.md).
+[spec/PROOF_v0.md](spec/PROOF_v0.md). Build disclosure:
+[How this repo was built](#how-this-repo-was-built).
 
 Prerequisites: Python ≥ 3.11 (Node ≥ 18 only for the TypeScript
 verifier). Commands below are bash — macOS/Linux, or Git Bash/WSL on
@@ -80,6 +81,10 @@ eyd id              # print agent_id
 eyd verify-local    # walk and verify the local action chain
 pytest              # canonicalization vectors, records, chain
 ```
+
+One test cross-checks the TypeScript verifier; it skips unless Node
+is present and the TS package is built:
+`npm --prefix verifier/ts install && npm --prefix verifier/ts run build`.
 
 ## What we built (this repo, Apache-2.0, all new Oct 26 – Nov 4)
 
@@ -185,8 +190,10 @@ stack also starts in one command (`scripts/start-all.sh`,
 
 Commits carry a `Co-Authored-By: Claude Code` trailer: the
 development harness was Claude Code, running Meta's
-`muse-wonder-1.0` model — no Anthropic model wrote this code. The
-models the product itself calls are Meta's: the expectation vector
+`muse-wonder-1.0` model — no Anthropic model wrote this code.
+Planning documents (e.g. AI_PASSPORT.md) were drafted with help from
+Claude in chat; all code was written in the harness described above.
+The models the product itself calls are Meta's: the expectation vector
 runs `meta-models/muse-spark-open-1026` (open-weight Muse Spark via
 Baseten), and the demo agents run on the same Meta model gateway.
 
