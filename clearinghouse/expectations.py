@@ -15,11 +15,14 @@ Advisory by construction: an expectation never changes a
 classification or the PoT score. It is evidence, not a referee — a
 pre-registered prediction a mismatch can be measured against.
 
-Enabled when MODEL_GATEWAY_URL and MODEL_GATEWAY_TOKEN are set (the
+Enabled when MODEL_GATEWAY_URL and MODEL_GATEWAY_TOKEN are set (a
 Meta model gateway; ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN are
-accepted as fallbacks — the gateway speaks that API shape). Model:
-EXPECTATION_MODEL, else ANTHROPIC_MODEL, else the demo default. EXPECTATION_VERBS (comma list) restricts which
-verbs get sketches; unset means all. Any failure — no gateway,
+accepted as fallbacks). MODEL_GATEWAY_FORMAT picks the API shape:
+`openai` (chat completions — e.g. Baseten serving the Meta
+open-weight model) or `messages` (the default). Model:
+EXPECTATION_MODEL, else ANTHROPIC_MODEL, else the demo default.
+EXPECTATION_VERBS (comma list) restricts which verbs get sketches;
+unset means all. Any failure — no gateway,
 timeout, bad reply — yields no expectation and never blocks an intent.
 This module is the registry point for future vectors: each produces
 signed receipt annotations, none of them classify.
@@ -67,6 +70,41 @@ def _verbs() -> set[str] | None:
     return verbs or None
 
 
+def _call_gateway(model: str, prompt: str) -> str:
+    """One gateway call in the configured API shape. Returns the reply
+    text ('' when the model answered with nothing); raises on transport
+    or protocol errors. Reasoning output is never part of the reply:
+    `messages` shape yields text blocks only, `openai` shape yields the
+    message content, not reasoning_content."""
+    url = (_gateway_url() or "").rstrip("/")
+    token = _gateway_token() or ""
+    if os.environ.get("MODEL_GATEWAY_FORMAT", "messages").lower() == "openai":
+        # max_tokens must cover the model's reasoning plus the reply.
+        payload = {"model": model, "max_tokens": 2048,
+                   "messages": [{"role": "system", "content": _SYSTEM},
+                                {"role": "user", "content": prompt}]}
+        headers = {"Authorization": f"Bearer {token}"}
+        endpoint = url + "/chat/completions"
+    else:
+        # max_tokens must cover the gateway's hidden thinking plus the
+        # one-sentence reply; 300 starved it and yielded empty text.
+        payload = {"model": model, "max_tokens": 1024, "system": _SYSTEM,
+                   "messages": [{"role": "user", "content": prompt}]}
+        headers = {"x-api-key": token,
+                   "Authorization": f"Bearer {token}",
+                   "anthropic-version": "2023-06-01"}
+        endpoint = url + "/v1/messages"
+    req = urllib.request.Request(
+        endpoint, data=json.dumps(payload).encode(), method="POST",
+        headers={"Content-Type": "application/json", **headers})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        body = json.loads(r.read())
+    if endpoint.endswith("/chat/completions"):
+        return (body["choices"][0]["message"].get("content") or "").strip()
+    return "".join(b.get("text", "") for b in body.get("content", [])
+                   if b.get("type") == "text").strip()
+
+
 def generate_expectation(*, verb: str, tool: str, target: str,
                          task_verb: str | None = None) -> dict | None:
     """One model call from the declared action alone. None on any
@@ -80,30 +118,13 @@ def generate_expectation(*, verb: str, tool: str, target: str,
     lines = [f"verb: {verb}", f"tool: {tool}", f"target: {target}"]
     if task_verb:
         lines.append(f"task_verb: {task_verb}")
-    # max_tokens must cover the gateway's hidden thinking plus the
-    # one-sentence reply; 300 starved it and yielded empty text.
-    payload = {"model": model, "max_tokens": 1024, "system": _SYSTEM,
-               "messages": [{"role": "user", "content": "\n".join(lines)}]}
-    token = _gateway_token() or ""
-    req = urllib.request.Request(
-        (_gateway_url() or "").rstrip("/") + "/v1/messages",
-        data=json.dumps(payload).encode(), method="POST",
-        headers={"Content-Type": "application/json",
-                 "x-api-key": token,
-                 "Authorization": f"Bearer {token}",
-                 "anthropic-version": "2023-06-01"})
-    try:
-        # Retries: the gateway occasionally returns thinking only.
-        for _attempt in range(3):
-            with urllib.request.urlopen(req, timeout=20) as r:
-                body = json.loads(r.read())
-            text = "".join(b.get("text", "") for b in body.get("content", [])
-                           if b.get("type") == "text").strip()
-            if text:
-                break
-    except Exception as e:
-        print(f"expectations: model call failed: {e}", file=sys.stderr)
-        return None
-    if not text:
-        return None
-    return {"sketch": text[:300], "model": model}
+    # Retries: gateways occasionally return thinking/reasoning only.
+    for _attempt in range(3):
+        try:
+            text = _call_gateway(model, "\n".join(lines))
+        except Exception as e:
+            print(f"expectations: model call failed: {e}", file=sys.stderr)
+            continue
+        if text:
+            return {"sketch": text[:300], "model": model}
+    return None

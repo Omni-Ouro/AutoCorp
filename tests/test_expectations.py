@@ -3,6 +3,7 @@ intent time, bound into the receipt, site-attested match — and never
 a classification or score input.
 """
 import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -108,3 +109,43 @@ def test_gateway_names_are_meta_neutral(monkeypatch):
     assert exp_mod.model_name() is not None
     monkeypatch.setenv("EXPECTATIONS", "off")
     assert exp_mod.model_name() is None
+
+
+class _FakeResponse:
+    def __init__(self, body: dict):
+        self._body = json.dumps(body).encode()
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_openai_gateway_shape(monkeypatch):
+    """MODEL_GATEWAY_FORMAT=openai speaks chat completions (Baseten's
+    Meta open-weight serving); reasoning_content is not the sketch."""
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("EXPECTATIONS", raising=False)
+    monkeypatch.setenv("MODEL_GATEWAY_URL", "https://inference.example/v1")
+    monkeypatch.setenv("MODEL_GATEWAY_TOKEN", "x")
+    monkeypatch.setenv("MODEL_GATEWAY_FORMAT", "openai")
+    monkeypatch.setenv("EXPECTATION_MODEL", "meta-models/test")
+    seen = {}
+
+    def fake_urlopen(req, timeout=0):
+        seen["url"] = req.full_url
+        return _FakeResponse({"choices": [{"message": {
+            "content": "A confirmation that the thing was sent.",
+            "reasoning_content": "long private reasoning"}}]})
+
+    monkeypatch.setattr(exp_mod.urllib.request, "urlopen", fake_urlopen)
+    out = exp_mod.generate_expectation(
+        verb="send", tool="send_thing", target="example.com")
+    assert seen["url"].endswith("/chat/completions")
+    assert out == {"sketch": "A confirmation that the thing was sent.",
+                   "model": "meta-models/test"}

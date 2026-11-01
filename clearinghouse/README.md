@@ -20,8 +20,10 @@ expectation and never blocks an intent. Sites read the sketch at
 `GET /expectations/{record_hash}`.
 
 Env: `MODEL_GATEWAY_URL` + `MODEL_GATEWAY_TOKEN` enable the vector
-(the Meta model gateway; `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN`
-accepted as fallbacks). Model: `EXPECTATION_MODEL`, else
+(`ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` accepted as fallbacks).
+`MODEL_GATEWAY_FORMAT` picks the API shape: `openai` (chat completions
+— e.g. Baseten serving the Meta open-weight model) or `messages` (the
+default). Model: `EXPECTATION_MODEL`, else
 `ANTHROPIC_MODEL`, else `muse-wonder-1.0`; `EXPECTATION_VERBS` optionally restricts which
 verbs get sketches; `EXPECTATIONS=off` disables it. Sketches persist
 with the rest of the store — over time they accumulate into a
