@@ -2,6 +2,11 @@
 
 **Agents act on your behalf. Nobody can prove what they did.**
 
+> "Govern the event, not the technology." — Peter Evans-Greenwood
+
+EyD doesn't govern the agent or the model; it records the event and
+gets the counterparty to attest to the same event.
+
 EyD is a small library and a small window. The agent framework imports
 it, and it sits in the tool-call path: every call the agent makes is
 signed under the agent's own Ed25519 key and reported to a
@@ -62,7 +67,8 @@ Node/Express instead: `eydGate` from `eyd-verifier/express` — see
 
 Hosted honesty: the public Clearing House is the single-node v0.1.0
 below, run with persistence on and its demo-data endpoints (`/seed`,
-`/boost`) admin-locked — nobody can mint trust on it. Seeded history
+`/boost`) admin-locked — nobody can add score history to it except
+through real paired actions. Seeded history
 stays a local-demo fixture, labeled as such everywhere.
 
 ## Quickstart (the SDK alone)
@@ -109,6 +115,38 @@ pytest              # canonicalization vectors, records, chain
   site's gates, click a task, watch the refusal or the receipt land.
 - **EyD window** (`eyd-ui/window.py`) — live action list and receipt viewer (local web view).
 - **Demo agents** (`agent-demo/`) — one Meta-model agent ([agent.py](agent-demo/agent.py)) behind six console identities: bare, low-score EyD, EyD + Passport, Passport-only, newcomer, and the Bad Agent. A's tools are undecorated; the rest carry `@eyd.tool` under different keys; model code identical. The console drives it, one model call per click.
+
+## What EyD proves and what it doesn't
+
+The precise claim: **proof of agreement plus deviation, not proof of
+honesty.**
+
+What a receipt proves: two parties independently signed the same
+event — the agent reported its intent before acting and hashed what
+came back; the counterparty site reported its side; the hashes pair,
+or the mismatch is on the record. And when the framework exposes the
+task, the receipt proves the agent's action matched the verb the task
+implied — or that it Deviated.
+
+What it does not prove: that either party is honest. A colluding
+agent and site can mint Expected receipts together. EyD's counters
+are structural, not magical:
+
+- **Corroboration is labeled.** Enrollment declares `operator_id`
+  (and `integrator_id` when a vendor integrates on a customer's
+  behalf). Receipts carry `corroboration: independent |
+  same_operator | same_integrator`, and same-operator or
+  same-integrator receipts count for less toward the PoT score —
+  two reports from the same operator are a single report signed
+  twice. Stated limit: registration declares who operates a signer;
+  it cannot prove who holds the key. Independence is earned across
+  many unrelated counterparties, not asserted by one.
+- **Score provenance is visible.** The score endpoint and the
+  console break a score down by verb, so a score built only on
+  ungated actions reads as what it is — and it still fails any gate
+  a cautious site sets.
+- **No content is evidence.** Task text and tool arguments never
+  leave the device; the ledger holds hashes, verbs, and outcomes.
 
 ## Run the demo locally
 

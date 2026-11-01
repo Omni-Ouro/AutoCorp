@@ -110,6 +110,13 @@ passports: dict[str, dict] = {}  # agent_id -> {passport, subject, checked outco
 # Streak penalty (§3.10): agent_id -> {streak, cap, paused, notification}
 penalties: dict[str, dict] = {}
 BAD_CLASSES = ("Unexpected", "Declined", "Deviated")
+# Corroboration: how independently the two reporters are operated.
+# Two reports from one operator are a single report signed twice, so
+# they count for less as score evidence (v0 constants). Registration
+# declares who operates a signer; it cannot prove who holds the key —
+# independence is earned across many unrelated counterparties.
+CORROBORATION_WEIGHTS = {"independent": 1.0, "same_integrator": 0.5,
+                         "same_operator": 0.25}
 STREAK_LIMIT = 3
 PENALTY_CAP = 0.75
 CAP_STEP = 0.008
@@ -237,6 +244,19 @@ def _apply_penalty(agent_id: str, classification: str, *, demo: bool) -> None:
                 p["cap"] = None  # earned back: cap expires into the base
 
 
+def _corroboration(agent_id: str, site_id: str) -> str:
+    """Independence of the two reporters, from their enrollments. An
+    undeclared operator defaults to the signer itself — independence
+    is only downgraded by a declared shared operator or integrator."""
+    a, s = agents.get(agent_id, {}), sites.get(site_id, {})
+    if (a.get("operator_id") or agent_id) == (s.get("operator_id") or site_id):
+        return "same_operator"
+    a_in, s_in = a.get("integrator_id"), s.get("integrator_id")
+    if a_in and a_in == s_in:
+        return "same_integrator"
+    return "independent"
+
+
 def issue_receipt(record_hash_: str) -> dict | None:
     intent = intents.get(record_hash_)
     if intent is None:
@@ -265,6 +285,7 @@ def issue_receipt(record_hash_: str) -> dict | None:
         receipt["site_id"] = site_rep["site_id"]
         receipt["site_hash"] = site_rep.get("result_hash")
         receipt["site_outcome"] = site_rep.get("outcome")
+        receipt["corroboration"] = _corroboration(agent_id, site_rep["site_id"])
         if site_rep.get("expectation_match") is not None:
             receipt["expectation_match"] = bool(site_rep["expectation_match"])
     # Vector two: the pre-registered model expectation, bound into the
@@ -329,6 +350,12 @@ def enroll(payload: dict):
     entry = {"pubkey": pub, "enrolled_at": payload.get("ts") or utc_now()}
     if payload.get("domain"):
         entry["domain"] = payload["domain"]
+    # Who operates this signer, and who integrated it (both declared,
+    # never proven — they feed the receipt corroboration label).
+    if payload.get("operator_id"):
+        entry["operator_id"] = payload["operator_id"]
+    if payload.get("integrator_id"):
+        entry["integrator_id"] = payload["integrator_id"]
     if payload.get("callback_url"):
         entry["callback_url"] = payload["callback_url"]  # revocation push target
     if kind == "agent":
@@ -465,7 +492,7 @@ def agent_head(agent_id: str):
 def agent_score(agent_id: str):
     if agent_id not in agents:
         raise HTTPException(404, "unknown agent")
-    classes = []
+    rows = []  # (classification, weight, verb), in receipt order
     first = last = None
     for rh, receipt in receipts.items():
         if receipt["agent_id"] != agent_id:
@@ -475,11 +502,26 @@ def agent_score(agent_id: str):
         if intents.get(rh, {}).get("target") == "local" \
                 and receipt["classification"] != "Deviated":
             continue
-        classes.append(receipt["classification"])
+        rows.append((receipt["classification"],
+                     CORROBORATION_WEIGHTS.get(receipt.get("corroboration"), 1.0),
+                     receipt.get("verb")
+                     or ("demo" if receipt.get("demo_data") else "unknown")))
         ts = receipt["ts"]
         first = ts if first is None or ts < first else first
         last = ts if last is None or ts > last else last
-    result = compute_score(classes[-SCORED_WINDOW:], min_receipts=MIN_RECEIPTS)
+    rows = rows[-SCORED_WINDOW:]
+    result = compute_score([r[0] for r in rows], min_receipts=MIN_RECEIPTS,
+                           weights=[r[1] for r in rows])
+    # Which verbs the score came from — a Search-only history reads as one.
+    verbs: dict[str, dict] = {}
+    for cls, _w, verb in rows:
+        v = verbs.setdefault(verb, {"expected": 0, "unexpected": 0, "declined": 0,
+                                    "unverified": 0, "deviated": 0})
+        v[cls.lower()] += 1
+    for v in verbs.values():
+        v["scored"] = v["expected"] + v["unexpected"] + v["declined"] + v["deviated"]
+        v["score"] = (v["expected"] / v["scored"]) if v["scored"] else None
+    result["verbs"] = verbs
     base = result["score"]
     p = penalties.get(agent_id) or {}
     result.update({"base": base, "cap": p.get("cap"), "streak": p.get("streak", 0),

@@ -161,6 +161,9 @@ function renderDetail() {
     <dt>PoT score</dt><dd>${a.score == null ? "unknown" : a.score.toFixed(3)}${a.cap != null ? ` <span style="color:var(--mut)">(base ${a.base?.toFixed(3)}, capped at ${a.cap.toFixed(2)} — streak ${a.streak})</span>` : ""}</dd>
     <dt>receipts</dt><dd>${a.total == null ? "—" :
       `Expected ${a.expected} · Unexpected ${a.unexpected} · Declined ${a.declined} · Deviated ${a.deviated ?? 0} · Unverified ${a.unverified}`}</dd>
+    <dt>score from</dt><dd>${a.total == null || !a.verbs ? "—" :
+      Object.entries(a.verbs).map(([v, c]) =>
+        `${esc(v)}: ${c.expected}/${c.scored} expected`).join(" · ")}</dd>
     <dt>passport</dt><dd>${p ? `issuer ${esc(p.issuer || "—")} · subject ${short(p.subject)} · ${esc(p.status)}` : "—"}</dd>
     <dt>last seen</dt><dd>${a.last_seen || "—"}</dd>`;
   const ctl = $("#passport-ctl");

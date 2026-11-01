@@ -25,11 +25,17 @@ def classify(agent_report: dict | None, site_report: dict | None) -> str:
     return UNVERIFIED
 
 
-def compute_score(classifications: list[str], min_receipts: int = MIN_RECEIPTS) -> dict:
+def compute_score(classifications: list[str], min_receipts: int = MIN_RECEIPTS,
+                  weights: list[float] | None = None) -> dict:
     """Score counts exclude Unverified from the denominator (§3.10).
 
     `classifications` should already exclude `target: local` actions,
-    which never affect the score.
+    which never affect the score. `weights`, when given, is parallel to
+    `classifications` and scales how much each receipt counts as
+    evidence (corroboration weighting): the reported counts stay raw,
+    the ratio is weighted. The minimum-history gate stays on the raw
+    scored count — a score cannot be minted from almost nothing,
+    however independent.
     """
     counts = {EXPECTED: 0, UNEXPECTED: 0, DECLINED: 0, UNVERIFIED: 0, DEVIATED: 0}
     for c in classifications:
@@ -37,10 +43,16 @@ def compute_score(classifications: list[str], min_receipts: int = MIN_RECEIPTS) 
             counts[c] += 1
     scored = counts[EXPECTED] + counts[UNEXPECTED] + counts[DECLINED] + counts[DEVIATED]
     total = sum(counts.values())
-    score = (counts[EXPECTED] / scored) if scored >= min_receipts and scored > 0 else None
-    # With >= min scored receipts the formula applies; below it, null.
-    if scored < min_receipts:
-        score = None
+    score = None
+    if scored >= min_receipts and scored > 0:
+        if weights is None:
+            score = counts[EXPECTED] / scored
+        else:
+            w_expected = sum(w for c, w in zip(classifications, weights) if c == EXPECTED)
+            w_scored = sum(w for c, w in zip(classifications, weights)
+                           if c in (EXPECTED, UNEXPECTED, DECLINED, DEVIATED))
+            if w_scored > 0:
+                score = w_expected / w_scored
     return {
         "score": score,
         "expected": counts[EXPECTED],

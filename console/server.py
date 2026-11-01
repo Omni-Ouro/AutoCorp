@@ -235,7 +235,7 @@ def agents():
             card.update({k: score.get(k) for k in
                          ("score", "base", "cap", "streak", "expected", "unexpected",
                           "declined", "deviated", "unverified", "total",
-                          "first_seen", "last_seen")})
+                          "first_seen", "last_seen", "verbs")})
             if key in PASSPORT_ATTACHED:
                 _, standing, _ = request_json("GET", f"{CH}/agents/{ident.id}/standing")
                 if standing.get("passport_status") not in (None, "missing"):

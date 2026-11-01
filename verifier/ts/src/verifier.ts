@@ -130,6 +130,10 @@ export interface EyDSiteOptions {
   minScore?: number | null;
   requirePassport?: boolean;
   callbackUrl?: string | null;
+  /** Declared at enrollment; feeds the receipt corroboration label. */
+  operatorId?: string | null;
+  /** The vendor running this integration on the operator's behalf. */
+  integratorId?: string | null;
 }
 
 export class EyDSite {
@@ -140,6 +144,8 @@ export class EyDSite {
   readonly minScore: number | null;
   readonly requirePassport: boolean;
   readonly callbackUrl: string | null;
+  readonly operatorId: string | null;
+  readonly integratorId: string | null;
   readonly pubkeyCache = new Map<string, string>();
   readonly sessions = new Map<string, { agentId: string; expires: number }>();
   readonly nonces = new Map<string, number>();
@@ -156,6 +162,8 @@ export class EyDSite {
     this.minScore = opts.minScore ?? null;
     this.requirePassport = opts.requirePassport ?? false;
     this.callbackUrl = opts.callbackUrl ?? null;
+    this.operatorId = opts.operatorId ?? null;
+    this.integratorId = opts.integratorId ?? null;
   }
 
   // -- registry -------------------------------------------------------
@@ -169,6 +177,8 @@ export class EyDSite {
       ts: utcNow(),
     };
     if (this.callbackUrl) payload.callback_url = this.callbackUrl;
+    if (this.operatorId) payload.operator_id = this.operatorId;
+    if (this.integratorId) payload.integrator_id = this.integratorId;
     payload.sig = this.identity.sign(Buffer.from(recordHash(payload), "utf-8"));
     await requestJson("POST", `${this.clearinghouseUrl}/enroll`, payload);
   }

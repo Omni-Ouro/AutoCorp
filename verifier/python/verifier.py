@@ -105,7 +105,9 @@ class EyDSite:
     def __init__(self, identity: Identity, *, clearinghouse_url: str, domain: str,
                  min_score: float | None = None, require_passport: bool = False,
                  callback_url: str | None = None,
-                 public_clearinghouse_url: str | None = None):
+                 public_clearinghouse_url: str | None = None,
+                 operator_id: str | None = None,
+                 integrator_id: str | None = None):
         self.identity = identity
         self.clearinghouse_url = clearinghouse_url.rstrip("/")
         # Advertised in EyD-Clearinghouse challenge headers. API calls
@@ -117,6 +119,9 @@ class EyDSite:
         self.min_score = min_score
         self.require_passport = require_passport
         self.callback_url = callback_url
+        # Declared at enrollment; feeds the receipt corroboration label.
+        self.operator_id = operator_id
+        self.integrator_id = integrator_id
         self.pubkey_cache: dict[str, str] = {}
         self.sessions: dict[str, tuple[str, float]] = {}
         self.nonces: dict[str, float] = {}
@@ -130,6 +135,10 @@ class EyDSite:
                    "pubkey": self.identity.pubkey_b64, "domain": self.domain, "ts": utc_now()}
         if self.callback_url:
             payload["callback_url"] = self.callback_url  # revocation push notices
+        if self.operator_id:
+            payload["operator_id"] = self.operator_id
+        if self.integrator_id:
+            payload["integrator_id"] = self.integrator_id
         payload["sig"] = self.identity.sign(record_hash(payload).encode())
         _request_json("POST", f"{self.clearinghouse_url}/enroll", payload)
 

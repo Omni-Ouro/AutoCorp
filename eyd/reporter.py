@@ -34,9 +34,14 @@ def request_json(method: str, url: str, payload: dict | None = None, timeout: fl
 
 
 class Reporter:
-    def __init__(self, base_url: str, queue_path: Path | None = None):
+    def __init__(self, base_url: str, queue_path: Path | None = None,
+                 operator_id: str | None = None,
+                 integrator_id: str | None = None):
         self.base_url = base_url.rstrip("/")
         self.queue_path = queue_path
+        # Declared at enrollment; feeds the receipt corroboration label.
+        self.operator_id = operator_id
+        self.integrator_id = integrator_id
 
     # -- offline queue --------------------------------------------------
     def _queue(self, kind: str, payload: dict) -> None:
@@ -66,6 +71,10 @@ class Reporter:
     def enroll(self, identity: Identity) -> tuple[int | None, dict]:
         payload = {"kind": "agent", "agent_id": identity.id,
                    "pubkey": identity.pubkey_b64, "ts": utc_now()}
+        if self.operator_id:
+            payload["operator_id"] = self.operator_id
+        if self.integrator_id:
+            payload["integrator_id"] = self.integrator_id
         payload["sig"] = identity.sign(record_hash(payload).encode())
         status, body, _ = request_json("POST", f"{self.base_url}/enroll", payload)
         return status, body

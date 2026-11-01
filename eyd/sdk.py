@@ -158,12 +158,15 @@ class EyD:
 
     @classmethod
     def load(cls, identity_path: str | Path, *, clearinghouse: str | None = None,
-             chain_path: str | Path | None = None) -> "EyD":
+             chain_path: str | Path | None = None,
+             operator_id: str | None = None,
+             integrator_id: str | None = None) -> "EyD":
         identity_path = Path(identity_path)
         identity = Identity.load(identity_path)
         chain = LocalChain(Path(chain_path) if chain_path else identity_path.parent / "chain.jsonl",
                            identity)
-        reporter = Reporter(clearinghouse) if clearinghouse else None
+        reporter = Reporter(clearinghouse, operator_id=operator_id,
+                            integrator_id=integrator_id) if clearinghouse else None
         if reporter:
             reporter.enroll(identity)
         return cls(identity, chain=chain, reporter=reporter)

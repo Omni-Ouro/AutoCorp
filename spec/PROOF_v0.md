@@ -49,6 +49,8 @@ public keys are base64 of the 32-byte raw Ed25519 key.
 
 Optional vector-two fields (§3.12): `expectation: {model, sketch, category}` — the pre-registered model expectation for the action (category from the fixed taxonomy in §3.12); `expectation_match: bool` — the site's attestation (carried in its signed report) that its result matched the sketch. Advisory only: neither field affects classification or the PoT score.
 
+**Corroboration.** Enrollment declares `operator_id` and, when a vendor runs the integration on the operator's behalf, `integrator_id` (both signed with the enrollment; undeclared defaults to the signer itself). When a site report pairs, the receipt carries `corroboration`: `independent`, `same_operator`, or `same_integrator` (same-operator outranks same-integrator). Absent when there is no site report. Stated limit: registration declares who operates a signer; it cannot prove who holds the key. Independence is earned across many unrelated counterparties, not asserted by one.
+
 ## Classification
 
 | Condition | Classification |
@@ -61,7 +63,7 @@ Optional vector-two fields (§3.12): `expectation: {model, sketch, category}` �
 
 Deviation outranks the pairing outcome: the agent did something other than the task it was given, whatever the site saw. A late report upgrades Unverified and reissues the receipt. `target: local` actions are always Unverified and never affect the score — except Deviated, which scores.
 
-**PoT score.** Base = Expected ÷ (Expected + Unexpected + Declined + Deviated) over the agent's last 100 classified receipts, or `null` with fewer than **5** scored receipts (N=5, v0 default, configurable). **Streak penalty:** three consecutive Unexpected/Declined/Deviated receipts cap the effective score at 0.75 (`min(base, cap)`), pause the agent's AI Passport if it carries one, and notify the owner. Each subsequent Expected raises the cap by 0.008; the cap expires when it reaches base. One Expected resets the streak; Unverified neither counts nor resets. Unpausing (owner approval) removes the refusal, never the cap.
+**PoT score.** Base = Expected ÷ (Expected + Unexpected + Declined + Deviated) over the agent's last 100 classified receipts, or `null` with fewer than **5** scored receipts (N=5, v0 default, configurable). The ratio is weighted by corroboration — independent 1.0, same-integrator 0.5, same-operator 0.25 — because two reports from one operator are a single report signed twice; reported counts stay raw, and the 5-receipt gate is on the raw count. The score endpoint also breaks the same receipts down by verb, so a score's provenance is visible. **Streak penalty:** three consecutive Unexpected/Declined/Deviated receipts cap the effective score at 0.75 (`min(base, cap)`), pause the agent's AI Passport if it carries one, and notify the owner. Each subsequent Expected raises the cap by 0.008; the cap expires when it reaches base. One Expected resets the streak; Unverified neither counts nor resets. Unpausing (owner approval) removes the refusal, never the cap.
 
 ## 4.6 Attestation (challenge/response)
 
