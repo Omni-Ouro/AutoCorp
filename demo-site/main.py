@@ -210,7 +210,7 @@ def _refusal(site: EyDSite, reason: dict, challenge: bool = False) -> JSONRespon
     headers = {}
     if challenge:
         headers = {"EyD-Challenge": site.new_challenge(),
-                   "EyD-Clearinghouse": site.clearinghouse_url}
+                   "EyD-Clearinghouse": site.public_clearinghouse_url}
     return JSONResponse(reason, status_code=403, headers=headers)
 
 

@@ -24,7 +24,8 @@ RECORD_HASH = "sha256:" + "ab" * 32
 def _app_with_gate():
     app = FastAPI()
     site = EyDSite(Identity.generate(kind="site"),
-                   clearinghouse_url="http://127.0.0.1:9", domain="127.0.0.1")
+                   clearinghouse_url="http://127.0.0.1:9", domain="127.0.0.1",
+                   public_clearinghouse_url="https://ch.example.com")
     site.passport_status = lambda agent_id: "valid"
     reports = []
     site.report = lambda rh, aid, outcome, result: reports.append(
@@ -48,6 +49,8 @@ def test_gated_challenges_without_attestation():
     assert r.status_code == 403
     assert r.json()["reason"] == "PoT score unknown"
     assert r.headers.get("eyd-challenge")  # agent SDK will attest + retry
+    # Advertised Clearing House is the public one, not the internal URL.
+    assert r.headers.get("eyd-clearinghouse") == "https://ch.example.com"
     # Owner-facing pointer; the refusal body itself never names EyD.
     assert r.headers.get("eyd-info") == "https://example.com/eyd"
 

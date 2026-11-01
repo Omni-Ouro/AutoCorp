@@ -76,7 +76,8 @@ export function eydGate(site: EyDSite, opts: EyDGateOptions = {}) {
       opts.onEvent?.(agentId, `refused: ${reason.reason}`);
       if (challenge) {
         res.setHeader("EyD-Challenge", site.newChallenge());
-        res.setHeader("EyD-Clearinghouse", site.clearinghouseUrl);
+        res.setHeader("EyD-Clearinghouse",
+                      site.publicClearinghouseUrl ?? site.clearinghouseUrl);
         if (opts.infoUrl) res.setHeader("EyD-Info", opts.infoUrl);
       }
       res.status(403).json(reason);

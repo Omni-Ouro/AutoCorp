@@ -116,6 +116,10 @@ export function buildSiteReport(
 
 export interface EyDSiteOptions {
   clearinghouseUrl: string;
+  /** Advertised in EyD-Clearinghouse challenge headers; API calls keep
+   *  clearinghouseUrl, which may be localhost behind a proxy while
+   *  agents need the public address. Defaults to clearinghouseUrl. */
+  publicClearinghouseUrl?: string;
   domain: string;
   minScore?: number | null;
   requirePassport?: boolean;
@@ -125,6 +129,7 @@ export interface EyDSiteOptions {
 export class EyDSite {
   readonly identity: Identity;
   readonly clearinghouseUrl: string;
+  readonly publicClearinghouseUrl: string;
   readonly domain: string;
   readonly minScore: number | null;
   readonly requirePassport: boolean;
@@ -139,6 +144,8 @@ export class EyDSite {
   constructor(identity: Identity, opts: EyDSiteOptions) {
     this.identity = identity;
     this.clearinghouseUrl = opts.clearinghouseUrl.replace(/\/$/, "");
+    this.publicClearinghouseUrl = (
+      opts.publicClearinghouseUrl ?? opts.clearinghouseUrl).replace(/\/$/, "");
     this.domain = opts.domain;
     this.minScore = opts.minScore ?? null;
     this.requirePassport = opts.requirePassport ?? false;

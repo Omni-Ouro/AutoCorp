@@ -99,9 +99,15 @@ class EyDSite:
 
     def __init__(self, identity: Identity, *, clearinghouse_url: str, domain: str,
                  min_score: float | None = None, require_passport: bool = False,
-                 callback_url: str | None = None):
+                 callback_url: str | None = None,
+                 public_clearinghouse_url: str | None = None):
         self.identity = identity
         self.clearinghouse_url = clearinghouse_url.rstrip("/")
+        # Advertised in EyD-Clearinghouse challenge headers. API calls
+        # keep clearinghouse_url, which may be localhost behind a proxy
+        # while agents need the public address.
+        self.public_clearinghouse_url = (
+            public_clearinghouse_url or clearinghouse_url).rstrip("/")
         self.domain = domain
         self.min_score = min_score
         self.require_passport = require_passport

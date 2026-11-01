@@ -76,7 +76,9 @@ def gated(site, *, min_score=None, eyd_required=True, on_event=None,
                 headers = {}
                 if challenge:
                     headers = {"EyD-Challenge": site.new_challenge(),
-                               "EyD-Clearinghouse": site.clearinghouse_url}
+                               "EyD-Clearinghouse":
+                                   getattr(site, "public_clearinghouse_url",
+                                           site.clearinghouse_url)}
                     if info_url:
                         headers["EyD-Info"] = info_url
                 return JSONResponse(reason, status_code=403, headers=headers)

@@ -11,6 +11,7 @@ import { eydGate } from "../dist/express.js";
 function fakeSite(overrides = {}) {
   return {
     clearinghouseUrl: "http://127.0.0.1:9",
+    publicClearinghouseUrl: "https://ch.example.com",
     scores: new Map([["AGENT1", null]]),
     reports: [],
     newChallenge: () => "nonce-1",
@@ -78,7 +79,7 @@ test("eydGate: no attestation gets a challenge", async () => {
     });
   assert.equal(res.statusCode, 403);
   assert.equal(res.headers["EyD-Challenge"], "nonce-1");
-  assert.equal(res.headers["EyD-Clearinghouse"], site.clearinghouseUrl);
+  assert.equal(res.headers["EyD-Clearinghouse"], "https://ch.example.com");
   assert.equal(res.headers["EyD-Info"], "https://example.com/eyd");
 });
 

@@ -14,7 +14,9 @@ Everything is sandboxed: requests are recorded on the board below,
 nothing is emailed and no calendar invite is ever sent.
 
 Run: PLAYGROUND_PORT=8002 python playground/main.py
-Env: CLEARINGHOUSE_URL, PLAYGROUND_DOMAIN (default localhost),
+Env: CLEARINGHOUSE_URL, CLEARINGHOUSE_PUBLIC_URL (advertised to
+     agents in challenge headers when it differs), PLAYGROUND_DOMAIN
+     (default localhost),
      PLAYGROUND_PUBLIC_URL (revocation-push callback base),
      PLAYGROUND_KEY_FILE (site identity, persisted).
 """
@@ -66,10 +68,12 @@ def _site_identity() -> Identity:
 
 def make_app(*, clearinghouse_url: str = "http://127.0.0.1:8787",
              identity: Identity | None = None, domain: str = "localhost",
-             callback_url: str | None = None) -> FastAPI:
+             callback_url: str | None = None,
+             public_clearinghouse_url: str | None = None) -> FastAPI:
     site_identity = identity or _site_identity()
     site = EyDSite(site_identity, clearinghouse_url=clearinghouse_url,
-                   domain=domain, callback_url=callback_url)
+                   domain=domain, callback_url=callback_url,
+                   public_clearinghouse_url=public_clearinghouse_url)
     site.enroll()
     app = FastAPI(title=f"{COMPANY} — EyD playground")
     app.state.site = site
@@ -175,6 +179,7 @@ if __name__ == "__main__":
     port = int(os.environ.get("PLAYGROUND_PORT", "8002"))
     app = make_app(
         clearinghouse_url=os.environ.get("CLEARINGHOUSE_URL", "http://127.0.0.1:8787"),
+        public_clearinghouse_url=os.environ.get("CLEARINGHOUSE_PUBLIC_URL"),
         domain=os.environ.get("PLAYGROUND_DOMAIN", "localhost"),
         callback_url=os.environ.get("PLAYGROUND_PUBLIC_URL",
                                     f"http://localhost:{port}"))
