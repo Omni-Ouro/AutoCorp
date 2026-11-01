@@ -275,7 +275,7 @@ real deployed URLs on screen. Cut hard at 3:00.
 4. **Pubkey discovery through the clearinghouse.** It's the gate; the extra round trip is the point.
 5. **Local chain is truth; clearinghouse is referee.** Offline runs still chain; receipts arrive late.
 6. **One Clearing House codebase.** Single-node; the same code runs locally and as the hosted beta. The multi-tenant tier is Omni-Ouro's, later.
-7. **One agent, one device, one key.**
+7. **One agent, one device, one key.** (Short-term setup — running multiple agents per device, each with its own key doing its own tasks, is being designed.)
 8. **Intents name the counterparty.** Hashes for content, domain in the clear for who. It closes header replay and it is the market data.
 9. **Sites hold their own copy.** Clearinghouse is registry and referee, never in the request path. Known agents are admitted even when it is down.
 10. **The agent is never told.** EyD is invisible from inside the agent. The only EyD-shaped thing an agent can ever observe is a refusal citing a PoT score, worded identically everywhere.
